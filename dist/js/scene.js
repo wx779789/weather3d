@@ -26,12 +26,27 @@ scene.fog = new THREE.FogExp2(0x0a1220, 0.014);
 
 const FRUSTUM = 14.2;
 let camera = null;
+const cam = { zoom: 1, pitch: 0.72, dist: 42 };
+function applyCamera() {
+  if (!camera) return;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  const aspect = w / h;
+  const base = Math.max(h < 760 ? 16.5 : FRUSTUM, 12.6 / Math.max(aspect, 0.35));
+  const fy = base / cam.zoom;
+  camera.left = -fy * aspect / 2;
+  camera.right = fy * aspect / 2;
+  camera.top = fy / 2;
+  camera.bottom = -fy / 2;
+  camera.updateProjectionMatrix();
+  const p = cam.pitch;
+  camera.position.set(Math.cos(p) * cam.dist, Math.sin(p) * cam.dist, Math.cos(p) * cam.dist);
+  camera.lookAt(0, 1.2, 0);
+}
 function makeCamera() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
   const aspect = w / h;
   camera = new THREE.OrthographicCamera(-FRUSTUM * aspect / 2, FRUSTUM * aspect / 2, FRUSTUM / 2, -FRUSTUM / 2, 0.1, 300);
-  camera.position.set(17, 15.5, 17);
-  camera.lookAt(0, 1.35, 0);
+  applyCamera();
 }
 makeCamera();
 
@@ -173,7 +188,7 @@ const MAT = {
   green: new THREE.MeshStandardMaterial({ color: 0x24463c, roughness: 0.9 }),
   trunk: new THREE.MeshStandardMaterial({ color: 0x2c231c, roughness: 0.95 }),
   warm: new THREE.MeshStandardMaterial({ color: 0xffdca8, emissive: 0xffbe6a, emissiveIntensity: 2.4, roughness: 0.4 }),
-  glass: new THREE.MeshStandardMaterial({ color: 0x8fb6dd, emissive: 0x6fa8e0, emissiveIntensity: 0.5, roughness: 0.15, metalness: 0.9, transparent: true, opacity: 0.85 }),
+  glass: new THREE.MeshStandardMaterial({ color: 0x9dc0e4, emissive: 0x6fa8e0, emissiveIntensity: 0.45, roughness: 0.12, metalness: 0.95, transparent: true, opacity: 0.88, envMapIntensity: 1.5 }),
   car: new THREE.MeshStandardMaterial({ color: 0x2b3a52, roughness: 0.35, metalness: 0.7 }),
   tyre: new THREE.MeshStandardMaterial({ color: 0x0b0f16, roughness: 0.95 })
 };
@@ -282,14 +297,19 @@ pivot.add(puddles);
 /* ---------------- 地标建筑 ---------------- */
 function tree(x, z, s = 1) {
   const g = new THREE.Group();
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.06 * s, 0.08 * s, 0.5 * s, 6), MAT.trunk);
-  trunk.position.y = 0.25 * s;
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.055 * s, 0.085 * s, 0.62 * s, 7), MAT.trunk);
+  trunk.position.y = 0.31 * s;
   trunk.castShadow = true;
   g.add(trunk);
-  const leaves = new THREE.Mesh(new THREE.ConeGeometry(0.32 * s, 0.9 * s, 7), MAT.green);
-  leaves.position.y = 0.9 * s;
-  leaves.castShadow = true;
-  g.add(leaves);
+  const greens = [new THREE.MeshStandardMaterial({ color: 0x2c5c40, roughness: 0.92 }),
+                  new THREE.MeshStandardMaterial({ color: 0x357048, roughness: 0.92 }),
+                  new THREE.MeshStandardMaterial({ color: 0x3f8154, roughness: 0.92 })];
+  [0.95, 0.72, 0.5].forEach((k, i) => {
+    const leaves = new THREE.Mesh(new THREE.ConeGeometry(0.34 * s * k, 0.55 * s, 8), greens[i]);
+    leaves.position.y = (0.7 + i * 0.3) * s;
+    leaves.castShadow = true;
+    g.add(leaves);
+  });
   g.position.set(x, 0.2, z);
   return g;
 }
@@ -407,6 +427,103 @@ for (let i = 0; i < 16; i++) {
   const r = 4.4 + (i % 3) * 0.2;
   pivot.add(grassTuft(Math.cos(a) * r, Math.sin(a) * r, 0.8 + (i % 4) * 0.12));
 }
+
+
+/* ---------- 接触阴影（伪 AO） ---------- */
+const aoCanvas = document.createElement('canvas');
+aoCanvas.width = aoCanvas.height = 64;
+{
+  const c = aoCanvas.getContext('2d');
+  const g = c.createRadialGradient(32, 32, 2, 32, 32, 31);
+  g.addColorStop(0, 'rgba(0,0,0,0.55)');
+  g.addColorStop(0.6, 'rgba(0,0,0,0.22)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = g; c.fillRect(0, 0, 64, 64);
+}
+const aoTex = new THREE.CanvasTexture(aoCanvas);
+const aoMat = new THREE.MeshBasicMaterial({ map: aoTex, transparent: true, depthWrite: false, opacity: 0.85 });
+
+function contactShadow(x, z, r) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(r * 2, r * 2), aoMat);
+  m.rotation.x = -Math.PI / 2;
+  m.position.set(x, 0.205, z);
+  m.renderOrder = 1;
+  pivot.add(m);
+  return m;
+}
+
+/* ---------- 街道家具 ---------- */
+const metal = new THREE.MeshStandardMaterial({ color: 0x2a3446, roughness: 0.5, metalness: 0.7 });
+const woodSeat = new THREE.MeshStandardMaterial({ color: 0x6a4a2f, roughness: 0.9 });
+
+function bench(x, z, ry) {
+  const g = new THREE.Group();
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.05, 0.26), woodSeat);
+  seat.position.y = 0.24; seat.castShadow = true; g.add(seat);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.24, 0.04), woodSeat);
+  back.position.set(0, 0.37, -0.11); back.castShadow = true; g.add(back);
+  [-0.28, 0.28].forEach(dx => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.24, 0.22), metal);
+    leg.position.set(dx, 0.12, 0); g.add(leg);
+  });
+  g.position.set(x, 0.2, z); g.rotation.y = ry || 0;
+  pivot.add(g); contactShadow(x, z, 0.45);
+  return g;
+}
+
+function bin(x, z) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.085, 0.28, 10), metal);
+  body.position.y = 0.14; body.castShadow = true; g.add(body);
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.03, 10), MAT.line);
+  top.position.y = 0.29; g.add(top);
+  g.position.set(x, 0.2, z); pivot.add(g);
+  return g;
+}
+
+function trafficLight(x, z, ry) {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.032, 1.15, 7), metal);
+  pole.position.y = 0.58; pole.castShadow = true; g.add(pole);
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.035, 0.035), metal);
+  arm.position.set(-0.25, 1.14, 0); g.add(arm);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.24, 0.09), metal);
+  head.position.set(-0.46, 1.02, 0); g.add(head);
+  const bulps = [[0.06, 0xff5a4a], [-0.02, 0xffc04a], [-0.1, 0x64e08a]];
+  bulps.forEach(([dy, c]) => {
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 8), new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 2.2 }));
+    b.position.set(-0.46, 1.02 + dy, 0.05); g.add(b);
+  });
+  g.position.set(x, 0.2, z); g.rotation.y = ry || 0;
+  pivot.add(g);
+  return g;
+}
+
+function hedge(x, z, w, d, ry) {
+  const g = new THREE.Group();
+  const n = Math.max(2, Math.round(w / 0.26));
+  for (let i = 0; i < n; i++) {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.22 + Math.random() * 0.05, d), grassMat);
+    b.position.set(-w / 2 + (i + 0.5) * (w / n), 0.11, 0);
+    b.castShadow = true; b.receiveShadow = true;
+    g.add(b);
+  }
+  g.position.set(x, 0.2, z); g.rotation.y = ry || 0;
+  pivot.add(g);
+  return g;
+}
+
+bench(-3.6, 3.2, 0);
+bench(3.55, 3.15, Math.PI);
+bench(-3.5, -3.15, 0);
+bin(-4.15, 3.0); bin(4.2, -3.05);
+trafficLight(2.15, 2.75, 0); trafficLight(-2.2, -2.8, Math.PI);
+hedge(-4.55, -1.6, 1.4, 0.26, Math.PI / 2);
+hedge(4.55, 1.6, 1.4, 0.26, Math.PI / 2);
+
+/* 地标与树的接触阴影 */
+contactShadow(0, 0, 3.4);
+[[-4.4, -4.4], [-4.4, -3.6], [4.4, 4.4], [-2.9, -4.5], [4.5, -2.2]].forEach(([x, z]) => contactShadow(x, z, 0.6));
 
 /* ---------- 行人 ---------- */
 const SKIN = [0xe8c4a2, 0xd9b08c, 0xf0d3b8, 0xc99a72];
@@ -1140,17 +1257,27 @@ function updateSun(hour) {
 /* ---------------- 交互：拖动旋转 ---------------- */
 let dragging = false, lastX = 0, spinVel = 0, userSpin = 0, idleTimer = 0;
 canvas.addEventListener('pointerdown', e => {
-  dragging = true; lastX = e.clientX; canvas.setPointerCapture(e.pointerId);
+  dragging = true; lastX = e.clientX; window.__lastY = e.clientY; canvas.setPointerCapture(e.pointerId);
   idleTimer = 0;
 });
 canvas.addEventListener('pointermove', e => {
   if (!dragging) return;
   const dx = e.clientX - lastX;
+  const dy = e.clientY - (window.__lastY || e.clientY);
+  window.__lastY = e.clientY;
   lastX = e.clientX;
   spinVel = dx * 0.006;
   userSpin += spinVel;
+  cam.pitch = Math.min(1.35, Math.max(0.22, cam.pitch + dy * 0.004));
+  applyCamera();
   idleTimer = 6;
 });
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  cam.zoom = Math.min(2.4, Math.max(0.55, cam.zoom * (1 - e.deltaY * 0.0012)));
+  applyCamera();
+  idleTimer = 6;
+}, { passive: false });
 canvas.addEventListener('pointerup', e => { dragging = false; try { canvas.releasePointerCapture(e.pointerId); } catch (_) {} });
 canvas.addEventListener('pointercancel', () => { dragging = false; });
 
@@ -1403,14 +1530,7 @@ function animate() {
 function onResize() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
   renderer.setSize(w, h, false);
-  const aspect = w / h;
-  const f = Math.max(h < 760 ? 16.5 : FRUSTUM, 12.6 / Math.max(aspect, 0.35));
-  camera.lookAt(0, aspect < 0.9 ? -0.6 : 1.35, 0);
-  camera.left = -f * aspect / 2;
-  camera.right = f * aspect / 2;
-  camera.top = f / 2;
-  camera.bottom = -f / 2;
-  camera.updateProjectionMatrix();
+  applyCamera();
 }
 window.addEventListener('resize', onResize);
 onResize();
