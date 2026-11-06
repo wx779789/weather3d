@@ -153,10 +153,25 @@ scene.add(backdrop);
     ctx.closePath();
     ctx.fill();
   }
-  const tex = new THREE.CanvasTexture(c);
-  const trees = new THREE.Mesh(new THREE.CircleGeometry(2.28, 64), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
-  trees.position.set(4.5, 3.5, -7.42);
-  backdrop.add(trees);
+  // 低模雪林（放在圆窗后方，形成层次）
+  const forest = new THREE.Group();
+  forest.position.set(4.5, 1.2, -7.62);
+  const sil = toon(0x9fb3c9);
+  const silSnow = toon(0xdfe9f6);
+  for (let i = 0; i < 9; i++) {
+    const x = -1.9 + (i % 5) * 0.95 + (Math.random() - 0.5) * 0.3;
+    const hgt = 2.2 + Math.random() * 2.4;
+    const t = new THREE.Mesh(new THREE.ConeGeometry(0.5 + Math.random() * 0.2, hgt, 7), sil);
+    t.position.set(x, hgt / 2 + 0.2, -Math.random() * 0.5);
+    forest.add(t);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.42, hgt * 0.45, 7), silSnow);
+    cap.position.set(x, hgt * 0.78 + 0.2, t.position.z);
+    forest.add(cap);
+  }
+  backdrop.add(forest);
+  const glass = new THREE.Mesh(new THREE.CircleGeometry(2.28, 64), new THREE.MeshBasicMaterial({ color: 0xcfe0f2, transparent: true, opacity: 0.12 }));
+  glass.position.set(4.5, 3.5, -7.4);
+  backdrop.add(glass);
 }
 
 // 两侧布帘
@@ -430,11 +445,24 @@ scene.add(onsen);
 
 {
   // 水面
-  const water = new THREE.Mesh(new THREE.CircleGeometry(1.55, 48), MAT.water);
+  const waterGeo = new THREE.PlaneGeometry(3.1, 3.1, 36, 36);
+  const water = new THREE.Mesh(waterGeo, MAT.water);
   water.rotation.x = -Math.PI / 2;
   water.position.y = 0.16;
   water.name = 'water';
+  water.userData.base = waterGeo.attributes.position.array.slice();
   onsen.add(water);
+
+  // 涟漪环
+  water.userData.ripples = [];
+  for (let i = 0; i < 4; i++) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.06, 0.09, 24), new THREE.MeshBasicMaterial({ color: 0xdff6ff, transparent: true, opacity: 0, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(-1.3, 0.17, 0.2);
+    ring.userData.t = i * 0.9;
+    onsen.add(ring);
+    water.userData.ripples.push(ring);
+  }
 
   // 粗石围合（不规则大小）
   for (let i = 0; i < 16; i++) {
@@ -875,6 +903,28 @@ function animate() {
   if (!bathState.on) {
     camera.position.x = Math.sin(t * 0.06) * 0.35;
     camera.lookAt(0, 1.25, 0);
+  }
+
+  // 水面波动
+  {
+    const w = onsen.getObjectByName('water');
+    if (w) {
+      const arr = w.geometry.attributes.position.array;
+      const base = w.userData.base;
+      for (let i = 0; i < arr.length; i += 3) {
+        const x = base[i], y = base[i + 1];
+        arr[i + 2] = Math.sin(x * 4.2 + t * 1.6) * 0.012 + Math.cos(y * 3.6 - t * 1.2) * 0.01;
+      }
+      w.geometry.attributes.position.needsUpdate = true;
+      w.geometry.computeVertexNormals();
+      w.userData.ripples.forEach((r, i) => {
+        r.userData.t += dt;
+        const k = r.userData.t % 2.4;
+        const s2 = 0.4 + k * 1.1;
+        r.scale.setScalar(s2);
+        r.material.opacity = Math.max(0, 0.5 - k * 0.36);
+      });
+    }
   }
 
   if (window.__sparkle) window.__sparkle.material.opacity = 0.45 + Math.sin(t * 2.2) * 0.2;
