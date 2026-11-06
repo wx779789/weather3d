@@ -81,13 +81,15 @@ function paperTexture(w, h, base, tint) {
   return new THREE.CanvasTexture(c);
 }
 
+let wallMat = null;
 const backdrop = new THREE.Group();
 scene.add(backdrop);
 
 // 和纸墙
 {
   const tex = paperTexture(512, 512, '#e9e2d3', '#f6f1e4');
-  const wall = new THREE.Mesh(new THREE.PlaneGeometry(26, 14), new THREE.MeshBasicMaterial({ map: tex }));
+  wallMat = new THREE.MeshBasicMaterial({ map: tex });
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(26, 14), wallMat);
   wall.position.set(0, 5.2, -8.5);
   backdrop.add(wall);
 }
@@ -253,6 +255,84 @@ box(0.1, 2.4, 3.4, MAT.wood, -2.5, 1.4, 0, house);
   pl.position.set(x, y, z);
   house.add(pl);
 });
+
+
+/* ---------- 主景：横展雪枝（覆雪大枝） ---------- */
+const archGroup = new THREE.Group();
+scene.add(archGroup);
+{
+  const trunkX = -5.4, trunkZ = -2.2;
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.42, 3.4, 10), MAT.trunk);
+  trunk.position.set(trunkX, 1.7, trunkZ);
+  trunk.castShadow = true;
+  archGroup.add(trunk);
+
+  function snowBranch(pts, r) {
+    const curve = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(p[0], p[1], p[2])));
+    const wood = new THREE.Mesh(new THREE.TubeGeometry(curve, 26, r, 7, false), MAT.trunk);
+    wood.castShadow = true;
+    archGroup.add(wood);
+    // 雪脊（沿枝上缘）
+    const snowPts = pts.map(p => new THREE.Vector3(p[0], p[1] + r * 0.85, p[2]));
+    const sc = new THREE.CatmullRomCurve3(snowPts);
+    const snow = new THREE.Mesh(new THREE.TubeGeometry(sc, 26, r * 0.92, 7, false), MAT.snow);
+    snow.castShadow = true;
+    archGroup.add(snow);
+    // 垂枝
+    for (let i = 1; i < pts.length - 1; i++) {
+      const base = pts[i];
+      const drop = 0.5 + Math.random() * 0.9;
+      const t = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(base[0], base[1], base[2]),
+        new THREE.Vector3(base[0] + (Math.random() - 0.5) * 0.5, base[1] - drop * 0.5, base[2] + (Math.random() - 0.5) * 0.5),
+        new THREE.Vector3(base[0] + (Math.random() - 0.5) * 0.9, base[1] - drop, base[2] + (Math.random() - 0.5) * 0.9)
+      ]);
+      const twig = new THREE.Mesh(new THREE.TubeGeometry(t, 10, r * 0.35, 5, false), MAT.trunk);
+      archGroup.add(twig);
+      const snowTwig = new THREE.Mesh(new THREE.TubeGeometry(t, 10, r * 0.3, 5, false), MAT.snow);
+      snowTwig.position.y = r * 0.12;
+      archGroup.add(snowTwig);
+    }
+  }
+
+  snowBranch([[trunkX, 3.1, trunkZ], [-3.6, 3.9, -2.4], [-1.6, 4.35, -2.6], [0.8, 4.3, -2.8], [2.6, 4.0, -3.0]], 0.17);
+  snowBranch([[-3.9, 3.6, -2.3], [-2.6, 4.2, -1.4], [-0.9, 4.25, -0.8], [0.9, 4.0, -0.9], [2.2, 3.6, -1.1]], 0.13);
+  snowBranch([[-4.6, 3.3, -2.2], [-4.2, 3.9, -0.8], [-3.6, 4.15, 0.4], [-2.6, 4.05, 1.4]], 0.11);
+  snowBranch([[-2.4, 4.15, -2.5], [-2.0, 4.5, -1.6], [-1.2, 4.55, -0.6], [-0.2, 4.3, 0.1]], 0.09);
+}
+
+/* ---------- 雪堆（池岸 / 廊边） ---------- */
+function snowMound(x, z, r, h) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 10), MAT.snow);
+  m.scale.set(1, h / r, 0.85);
+  m.position.set(x, h * 0.55, z);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  scene.add(m);
+}
+[[1.2, 2.9, 0.55, 0.34], [2.2, 2.75, 0.5, 0.3], [4.4, 2.4, 0.6, 0.36],
+ [4.6, 1.1, 0.5, 0.28], [-0.9, 2.4, 0.45, 0.26], [0.2, 3.0, 0.4, 0.24],
+ [5.1, 3.0, 0.7, 0.4], [-2.2, 3.2, 0.5, 0.3]].forEach(([x, z, r, h]) => snowMound(x, z, r, h));
+
+/* ---------- 木廊（缘侧）与提灯 ---------- */
+{
+  const deck = new THREE.Group();
+  deck.position.set(0.9, 0, 1.2);
+  scene.add(deck);
+  box(4.6, 0.12, 2.2, MAT.woodLight, 0, 0.06, 0, deck);
+  for (let i = -2; i <= 2; i++) box(0.08, 0.1, 2.2, MAT.woodDark, i * 1.1, 0.13, 0, deck);
+  [[-2.1, 0.95], [2.1, 0.95], [-2.1, -0.95], [2.1, -0.95]].forEach(([x, z]) => {
+    const l = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.34, 10), MAT.lantern);
+    l.position.set(x, 0.36, z);
+    deck.add(l);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.1, 10), MAT.snow);
+    cap.position.set(x, 0.58, z);
+    deck.add(cap);
+    const pl = new THREE.PointLight(0xffb060, 1.1, 3.4, 2);
+    pl.position.set(x, 0.45, z);
+    deck.add(pl);
+  });
+}
 
 /* ---------- 雪树 ---------- */
 function snowTree(x, z, scale, pine) {
@@ -489,7 +569,7 @@ scene.add(fill);
 const PRESETS = {
   7:  { sky: 0xd8e4ef, fog: 0xcbd8e6, sun: 0xe8f2ff, sunI: 1.9, hemi: 1.25, fillI: 0.55, exposure: 1.15, warm: 1.0 },
   18: { sky: 0xf1c79a, fog: 0xe6b98f, sun: 0xffb066, sunI: 2.6, hemi: 0.95, fillI: 0.45, exposure: 1.22, warm: 1.5 },
-  22: { sky: 0x1c2740, fog: 0x18233a, sun: 0x8fb4ff, sunI: 0.55, hemi: 0.42, fillI: 0.5, exposure: 1.28, warm: 2.2 }
+  22: { sky: 0x0d1526, fog: 0x18233a, sun: 0x8fb4ff, sunI: 0.55, hemi: 0.42, fillI: 0.5, exposure: 1.28, warm: 2.2 }
 };
 
 let hour = 7;
@@ -506,7 +586,8 @@ function applyHour(h) {
   sun.position.set(-7 + Math.cos((h / 24) * Math.PI * 2) * 4, 7 + t * 3, 5);
   hemi.intensity = 1.2 - night * 0.75;
   hemi.color.set(h > 17 || h < 6 ? 0x9fb6d8 : 0xe6f0ff);
-  renderer.toneMappingExposure = 1.1 + night * 0.18;
+  renderer.toneMappingExposure = 1.05 + night * 0.12;
+  if (wallMat) { const k = 0.28 + 0.72 * (1 - night); wallMat.color.setRGB(k, k * 0.98, k * 1.02); }
   MAT.paper.emissiveIntensity = 0.35 + night * 0.9;
   MAT.lantern.emissiveIntensity = 0.9 + night * 1.4;
   if (scene.userData.fireLight) scene.userData.fireLight.intensity = 0.9 + night * 0.9;
@@ -692,7 +773,7 @@ function animate() {
   requestAnimationFrame(animate);
 }
 
-applyHour(7);
+applyHour(22);
 animate();
 document.getElementById('loading').classList.add('done');
 setTimeout(() => { const l = document.getElementById('loading'); if (l) l.remove(); }, 900);
