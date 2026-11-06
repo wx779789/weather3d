@@ -1,5 +1,5 @@
 /* 城市选择：柔性弯曲卡片轮播（着色器思路移植自 FlexCarousel） */
-(function () {
+(async function () {
   'use strict';
   const cities = window.CITIES;
   const canvas = document.getElementById('stage');
@@ -184,9 +184,17 @@
   let fboW = 2, fboH = 2;
 
   // 卡片纹理
-  const textures = cities.map(city => {
+  const loadImg = src => new Promise(resolve => {
+    const im = new Image();
+    im.onload = () => resolve(im);
+    im.onerror = () => resolve(null);
+    im.src = src;
+  });
+  const photos = await Promise.all(cities.map(c => loadImg('img/' + c.id + '.jpg')));
+
+  const textures = cities.map((city, idx) => {
     const c = document.createElement('canvas');
-    window.drawCityArt(c, city);
+    window.drawCityArt(c, city, photos[idx]);
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -215,7 +223,7 @@
     canvas.width = Math.round(view.w * view.dpr);
     canvas.height = Math.round(view.h * view.dpr);
 
-    layout.cardH = Math.min(view.h * 0.52, view.w * 0.56);
+    layout.cardH = Math.min(view.h * 0.56, view.w * 0.84);
     layout.cardW = layout.cardH * ART_ASPECT;
     layout.gap = Math.max(16, view.w * 0.012);
     layout.step = layout.cardW + layout.gap;
@@ -327,7 +335,12 @@
     }, 90);
   }
 
+  let lastW = 0, lastH = 0;
   function tick() {
+    if (canvas.clientWidth !== lastW || canvas.clientHeight !== lastH) {
+      lastW = canvas.clientWidth; lastH = canvas.clientHeight;
+      if (lastW > 0 && lastH > 0) resize();
+    }
     if (!state.dragging) {
       const k = 0.14;
       state.pos += (state.target - state.pos) * k;
@@ -422,4 +435,5 @@
   state.pos = 0;
   state.target = 0;
   tick();
+  window.addEventListener('orientationchange', () => setTimeout(resize, 300));
 })();

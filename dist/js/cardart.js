@@ -492,7 +492,125 @@
 
   const VARIANTS = { shanghai: 'sphere', guangzhou: 'canton', chengdu: 'plain' };
 
-  function drawArt(canvas, city) {
+
+  /* ---------------- 海报风格（真实照片 + 版式） ---------------- */
+  const EN = {
+    beijing: 'BEIJING', shanghai: 'SHANGHAI', guangzhou: 'GUANGZHOU', shenzhen: 'SHENZHEN',
+    chengdu: 'CHENGDU', xian: 'XI AN', hangzhou: 'HANGZHOU', chongqing: 'CHONGQING',
+    wuhan: 'WUHAN', haerbin: 'HARBIN', lasa: 'LHASA', tianjin: 'TIANJIN',
+    nanjing: 'NANJING', changsha: 'CHANGSHA', lanzhou: 'LANZHOU', shaoxing: 'SHAOXING',
+    xiamen: 'XIAMEN', putian: 'PUTIAN'
+  };
+
+  function spaced(ctx, text, x, y, gap, align) {
+    const chars = String(text).split('');
+    const widths = chars.map(c => ctx.measureText(c).width);
+    const total = widths.reduce((a, b) => a + b, 0) + gap * (chars.length - 1);
+    let cx = align === 'right' ? x - total : align === 'center' ? x - total / 2 : x;
+    chars.forEach((c, i) => {
+      ctx.fillText(c, cx, y);
+      cx += widths[i] + gap;
+    });
+    return total;
+  }
+
+  function drawPoster(canvas, city, img) {
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    const accent = city.accent || '#7fe3ff';
+
+    // 照片铺满
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    const sc = Math.max(W / iw, H / ih);
+    const dw = iw * sc, dh = ih * sc;
+    ctx.drawImage(img, (W - dw) / 2, (H - dh) * 0.42, dw, dh);
+
+    // 顶部压暗 + 底部渐隐
+    let g = ctx.createLinearGradient(0, 0, 0, H * 0.42);
+    g.addColorStop(0, 'rgba(4,8,15,0.55)');
+    g.addColorStop(1, 'rgba(4,8,15,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H * 0.42);
+
+    g = ctx.createLinearGradient(0, H * 0.42, 0, H);
+    g.addColorStop(0, 'rgba(5,9,16,0)');
+    g.addColorStop(0.45, 'rgba(5,9,16,0.72)');
+    g.addColorStop(1, 'rgba(4,7,13,0.96)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, H * 0.42, W, H * 0.58);
+
+    // 主色氛围
+    g = ctx.createRadialGradient(W * 0.5, H * 0.3, 20, W * 0.5, H * 0.35, W * 0.85);
+    g.addColorStop(0, rgba(accent, 0.10));
+    g.addColorStop(1, rgba(accent, 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // 版式
+    const px = 42;
+    const en = EN[city.id] || city.id.toUpperCase();
+
+    // 英文竖排（右侧）
+    ctx.save();
+    ctx.translate(W - 34, H * 0.62);
+    ctx.rotate(-Math.PI / 2);
+    ctx.font = '600 13px "Helvetica Neue", Arial, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.38)';
+    ctx.textBaseline = 'middle';
+    spaced(ctx, en, 0, 0, 9, 'left');
+    ctx.restore();
+
+    // 顶部小字
+    ctx.font = '600 11px "Helvetica Neue", Arial, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.62)';
+    ctx.textBaseline = 'alphabetic';
+    spaced(ctx, en, px, 54, 5, 'left');
+    ctx.font = '11px "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.42)';
+    ctx.fillText(city.province, px, 74);
+
+    // 主标题
+    ctx.font = '800 74px "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0,0,0,0.55)';
+    ctx.shadowBlur = 18;
+    ctx.fillText(city.name, px - 2, H - 152);
+    ctx.shadowBlur = 0;
+
+    // 分隔线
+    ctx.fillStyle = rgba(accent, 0.9);
+    ctx.fillRect(px, H - 136, 46, 2);
+
+    // 地标名
+    ctx.font = '600 21px "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.fillText(city.landmark, px, H - 96);
+
+    // 英文地标
+    ctx.font = '500 10px "Helvetica Neue", Arial, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.48)';
+    spaced(ctx, (city.landmarkEn || en + ' · CHINA'), px, H - 72, 3, 'left');
+
+    // 暗角 + 颗粒
+    const vig = ctx.createRadialGradient(W / 2, H * 0.42, H * 0.16, W / 2, H * 0.46, H * 0.8);
+    vig.addColorStop(0, 'rgba(0,0,0,0)');
+    vig.addColorStop(1, 'rgba(0,0,0,0.5)');
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.globalAlpha = 0.045;
+    for (let i = 0; i < 1200; i++) {
+      ctx.fillStyle = i % 3 ? '#ffffff' : '#000000';
+      ctx.fillRect(Math.random() * W, Math.random() * H, 1, 1);
+    }
+    ctx.restore();
+
+    return canvas;
+  }
+
+  function drawArt(canvas, city, photo) {
+    if (photo) return drawPoster(canvas, city, photo);
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
     const accent = city.accent || '#7fe3ff';

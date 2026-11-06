@@ -1202,6 +1202,19 @@ function iconFor(wea, isNight) {
 }
 
 const el = id => document.getElementById(id);
+const panelEl = document.getElementById('panel');
+const panelToggle = document.getElementById('panelToggle');
+if (panelToggle && panelEl) {
+  if (window.innerWidth <= 860) {
+    panelEl.classList.add('collapsed');
+    panelToggle.textContent = '展开';
+  }
+  panelToggle.addEventListener('click', () => {
+    const collapsed = panelEl.classList.toggle('collapsed');
+    panelToggle.textContent = collapsed ? '展开' : '收起';
+  });
+}
+
 el('cityName').textContent = city.name;
 el('landmark').textContent = city.landmark;
 el('province').textContent = city.province;
