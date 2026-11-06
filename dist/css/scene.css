@@ -360,3 +360,58 @@
 @media (max-width: 860px) {
   .panel.collapsed { max-height: 74px; }
 }
+
+.wxbar {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(16px, 2.6vh, 30px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(10, 18, 30, 0.62);
+  border: 1px solid rgba(150, 195, 245, 0.16);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  z-index: 7;
+  max-width: calc(100vw - 24px);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.wxbar::-webkit-scrollbar { display: none; }
+.wxbar-label {
+  font-size: 10px;
+  letter-spacing: .18em;
+  color: rgba(200, 220, 245, 0.45);
+  padding: 0 8px 0 4px;
+  white-space: nowrap;
+}
+.wxbar button {
+  flex: none;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(220, 234, 255, 0.72);
+  font-size: 12px;
+  letter-spacing: .08em;
+  cursor: pointer;
+  transition: background .18s, color .18s, border-color .18s;
+  white-space: nowrap;
+}
+.wxbar button:hover { background: rgba(120, 190, 255, 0.12); color: #fff; }
+.wxbar button.on {
+  background: rgba(120, 200, 255, 0.18);
+  border-color: rgba(140, 210, 255, 0.45);
+  color: #eaf6ff;
+}
+.wxbar.preview button[data-wx="auto"] { color: #9fe3c4; }
+
+@media (max-width: 860px) {
+  .wxbar { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); padding: 5px 8px; }
+  .wxbar-label { display: none; }
+  .wxbar button { padding: 5px 10px; font-size: 11px; }
+}

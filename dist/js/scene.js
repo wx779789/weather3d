@@ -1636,6 +1636,50 @@ if (panelToggle && panelEl) {
   });
 }
 
+/* ---------------- 天气预览切换 ---------------- */
+const DEMO_WX = {
+  clear:    { mode: 'clear',    precip: 0,   wea: '晴' },
+  cloudy:   { mode: 'cloudy',   precip: 0,   wea: '多云' },
+  overcast: { mode: 'overcast', precip: 0,   wea: '阴' },
+  rain:     { mode: 'rain',     precip: 3.2, wea: '中雨' },
+  thunder:  { mode: 'thunder',  precip: 7.5, wea: '雷阵雨' },
+  snow:     { mode: 'snow',     precip: 1.4, wea: '小雪' },
+  fog:      { mode: 'fog',      precip: 0,   wea: '雾' }
+};
+let wxOverride = null;
+
+function applyWxOverride(key) {
+  const bar = document.getElementById('wxbar');
+  if (!bar) return;
+  bar.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.wx === key));
+  bar.classList.toggle('preview', key !== 'auto');
+
+  if (key === 'auto') {
+    wxOverride = null;
+    if (currentWeather) {
+      applyWeather(currentWeather);
+      el('tipUmbrella').textContent = umbrellaAdvice(currentWeather.mode);
+    }
+    return;
+  }
+  const d = DEMO_WX[key];
+  if (!d) return;
+  wxOverride = key;
+  applyWeather({ mode: d.mode, precip: d.precip, wea: d.wea, thunder: d.mode === 'thunder' });
+  el('tipUmbrella').textContent = umbrellaAdvice(d.mode);
+}
+
+{
+  const bar = document.getElementById('wxbar');
+  if (bar) {
+    bar.addEventListener('click', e => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      applyWxOverride(btn.dataset.wx);
+    });
+  }
+}
+
 el('cityName').textContent = city.name;
 el('landmark').textContent = city.landmark;
 el('province').textContent = city.province;
@@ -1830,7 +1874,7 @@ async function load() {
       wea: data.now.wea || ''
     };
     // 用当前天气初始化
-    applyWeather(currentWeather);
+    if (!wxOverride) applyWeather(currentWeather);
     renderNow(data.now);
     renderHours(data.hours);
     renderDays(data.days);
