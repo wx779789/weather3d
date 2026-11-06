@@ -64,6 +64,30 @@ function box(w, h, d, mat, x, y, z, parent) {
   return m;
 }
 
+
+/* ---------- 夜空与星 ---------- */
+{
+  const c = document.createElement('canvas');
+  c.width = 1024; c.height = 512;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, 512);
+  g.addColorStop(0, '#050a16');
+  g.addColorStop(0.55, '#0c1626');
+  g.addColorStop(1, '#16233a');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 1024, 512);
+  for (let i = 0; i < 420; i++) {
+    const a = Math.random() * 0.9;
+    ctx.fillStyle = 'rgba(220,235,255,' + a + ')';
+    const r = Math.random() < 0.9 ? 1 : 1.8;
+    ctx.beginPath(); ctx.arc(Math.random() * 1024, Math.random() * 300, r, 0, 6.28); ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(60, 32, 20), new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, depthWrite: false }));
+  sky.name = 'nightsky';
+  scene.add(sky);
+  scene.userData.sky = sky;
+}
+
 /* ---------- 背景：和纸 / 折屏 / 圆窗 / 雪林 / 布帘 ---------- */
 function paperTexture(w, h, base, tint) {
   const c = document.createElement('canvas');
@@ -523,6 +547,41 @@ scene.add(onsen);
   scene.add(window.__sparkle);
 }
 
+
+/* ---------- 暖光泛光（伪 Bloom 精灵） ---------- */
+{
+  const mkGlow = () => {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const x = c.getContext('2d');
+    const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0, 'rgba(255,224,170,0.95)');
+    g.addColorStop(0.3, 'rgba(255,190,110,0.45)');
+    g.addColorStop(1, 'rgba(255,170,90,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  };
+  const tex = mkGlow();
+  const spots = [
+    [-1.4 - 2.1, 2.05, -3.4 + 1.5], [-1.4 + 2.1, 2.05, -3.4 + 1.5],
+    [0.9 - 2.1, 0.36 + 0.0, 1.2 + 0.95], [0.9 + 2.1, 0.36, 1.2 + 0.95],
+    [0.9 - 2.1, 0.36, 1.2 - 0.95], [0.9 + 2.1, 0.36, 1.2 - 0.95],
+    [0.4, 0.75, 2.2]
+  ];
+  spots.forEach(([x, y, z]) => {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.75 }));
+    sp.position.set(x, y, z);
+    sp.scale.set(1.5, 1.5, 1);
+    sp.userData.glow = true;
+    scene.add(sp);
+  });
+  // 屋内暖光
+  const inner = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.55 }));
+  inner.position.set(-1.4, 1.5, -2.2);
+  inner.scale.set(3.4, 2.0, 1);
+  scene.add(inner);
+  window.__glowSprites = scene.children.filter(o => o.isSprite && o.userData.glow);
+}
+
 /* ---------- 城市地标剪影（模型后方） ---------- */
 {
   const g = new THREE.Group();
@@ -629,14 +688,16 @@ function applyHour(h) {
   scene.fog.color.copy(cS).lerp(new THREE.Color(0xffffff), 0.25 * (1 - night));
   const warmK = h < 16 ? 0.6 : 1;
   sun.color.setHSL(0.09, 0.35 + 0.25 * warmK, 0.72 - 0.3 * night);
-  sun.intensity = 2.2 * (1 - night * 0.78);
+  sun.intensity = 2.0 * (1 - night * 0.82);
   sun.position.set(-7 + Math.cos((h / 24) * Math.PI * 2) * 4, 7 + t * 3, 5);
-  hemi.intensity = 1.2 - night * 0.75;
+  hemi.intensity = 1.05 - night * 0.62;
   hemi.color.set(h > 17 || h < 6 ? 0x9fb6d8 : 0xe6f0ff);
-  renderer.toneMappingExposure = 1.05 + night * 0.12;
-  if (wallMat) { const k = 0.28 + 0.72 * (1 - night); wallMat.color.setRGB(k, k * 0.98, k * 1.02); }
-  MAT.paper.emissiveIntensity = 0.35 + night * 0.9;
-  MAT.lantern.emissiveIntensity = 0.9 + night * 1.4;
+  renderer.toneMappingExposure = 1.02 - night * 0.14;
+  if (wallMat) { const k = 0.16 + 0.84 * (1 - night); wallMat.color.setRGB(k, k * 0.98, k * 1.04); }
+  if (scene.userData.sky) scene.userData.sky.material.color.setScalar(0.35 + 0.65 * (1 - night));
+  scene.fog.color.setRGB(0.09 + 0.55 * (1 - night), 0.13 + 0.58 * (1 - night), 0.20 + 0.60 * (1 - night));
+  MAT.paper.emissiveIntensity = 0.30 + night * 0.30;
+  MAT.lantern.emissiveIntensity = 0.8 + night * 1.0;
   if (scene.userData.fireLight) scene.userData.fireLight.intensity = 0.9 + night * 0.9;
   document.getElementById('clock').textContent =
     String(Math.floor(h)).padStart(2, '0') + ':' + String(Math.round((h % 1) * 60)).padStart(2, '0');
@@ -816,7 +877,11 @@ function animate() {
     camera.lookAt(0, 1.25, 0);
   }
 
-  if (window.__sparkle) window.__sparkle.material.opacity = 0.55 + Math.sin(t * 2.2) * 0.25;
+  if (window.__sparkle) window.__sparkle.material.opacity = 0.45 + Math.sin(t * 2.2) * 0.2;
+  if (window.__glowSprites) {
+    const k = 0.45 + (hour >= 19 || hour <= 6 ? 0.55 : 0);
+    window.__glowSprites.forEach((sp, i) => { sp.material.opacity = k * (0.75 + Math.sin(t * 1.6 + i) * 0.12); });
+  }
 
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
