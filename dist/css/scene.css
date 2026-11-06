@@ -446,3 +446,60 @@
   .world-btn { bottom: auto; top: 84px; left: 12px; padding: 8px 12px; }
   .wb-txt i { display: none; }
 }
+
+/* ---------- 第一人称漫游 ---------- */
+.world-btn { cursor: pointer; }
+.fp-hud { position: absolute; inset: 0; z-index: 7; pointer-events: none; }
+
+.fp-cross {
+  position: absolute; left: 50%; top: 50%; width: 16px; height: 16px;
+  transform: translate(-50%, -50%); opacity: .5;
+}
+.fp-cross::before, .fp-cross::after {
+  content: ""; position: absolute; background: #fff;
+  box-shadow: 0 0 4px rgba(0, 0, 0, .9);
+}
+.fp-cross::before { left: 50%; top: 0; width: 1px; height: 100%; transform: translateX(-50%); }
+.fp-cross::after { top: 50%; left: 0; height: 1px; width: 100%; transform: translateY(-50%); }
+
+.fp-exit {
+  position: absolute; left: clamp(18px, 2.6vw, 40px); top: 86px;
+  pointer-events: auto; cursor: pointer;
+  padding: 9px 16px; border-radius: 12px;
+  border: 1px solid rgba(180, 215, 255, .3);
+  background: rgba(10, 18, 32, .72); color: #eaf4ff;
+  font-size: 12px; letter-spacing: .12em;
+  backdrop-filter: blur(12px);
+}
+.fp-exit:hover { border-color: rgba(180, 220, 255, .7); background: rgba(24, 40, 62, .85); }
+
+.fp-tip {
+  position: absolute; left: 50%; bottom: 68px; transform: translateX(-50%);
+  white-space: nowrap; font-size: 11px; letter-spacing: .12em;
+  color: rgba(230, 240, 255, .72);
+  padding: 7px 16px; border-radius: 20px;
+  background: rgba(6, 12, 24, .48); border: 1px solid rgba(160, 200, 255, .14);
+  backdrop-filter: blur(8px);
+}
+
+/* 触屏方向键：仅无精确指针的设备显示 */
+.fp-pad { display: none; }
+@media (pointer: coarse) {
+  .fp-pad {
+    display: block; position: absolute; right: 18px; bottom: 96px;
+    pointer-events: auto; text-align: center; user-select: none;
+  }
+  .fp-pad > button, .fp-pad > div { display: block; }
+  .fp-pad button {
+    width: 46px; height: 46px; margin: 3px; cursor: pointer;
+    border-radius: 12px; border: 1px solid rgba(180, 215, 255, .28);
+    background: rgba(10, 20, 36, .6); color: #eaf4ff; font-size: 18px;
+    backdrop-filter: blur(8px); touch-action: none;
+  }
+  .fp-pad button:active { background: rgba(120, 190, 255, .35); }
+  .fp-pad > div { display: flex; }
+  .fp-tip { display: none; }
+}
+@media (max-width: 860px) {
+  .fp-exit { top: 78px; left: 12px; padding: 7px 12px; }
+}

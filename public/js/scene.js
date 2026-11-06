@@ -24,10 +24,40 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color('#05080f');
 scene.fog = new THREE.FogExp2(0x0a1220, 0.014);
 
+/* 两套相机并存：
+   沙盘俯视用正交相机（微缩模型感），街头漫游用透视相机（人眼视角）。
+   切换时只换 activeCamera，不破坏原有的沙盘视角与交互。 */
+const fpCamera = new THREE.PerspectiveCamera(68, 1, 0.02, 500);
+fpCamera.rotation.order = 'YXZ';
+let fpMode = false;
+let activeCamera = null;
+let currentBaseFog = 0.009;         // 沙盘模式下的雾浓度，退出漫游时恢复
+
+/* 第一人称状态（具体逻辑见文件末尾「第一人称漫游」段，函数声明会提升） */
+const fpKeys = Object.create(null);
+const EYE_HEIGHT = 0.86;            // 人眼高度：与场景内行人模型同尺度
+const WALK_LIMIT = 4.65;            // 可行走范围（平台半宽 5.25）
+const CORE_RADIUS = 2.35;           // 地标核心禁入半径，避免穿模
+const WALK_SPEED = 2.3;
+let fpYaw = 0, fpPitch = 0, fpWalk = 0, fpBob = 0;
+let fpDragging = false, fpLastX = 0, fpLastY = 0;
+let fpAttached = null, fpPanelWasCollapsed = false;
+let fpGround = null, fpBackdrop = null, fpBackdropMat = null;
+let fpSavedExposure = 1.28;
+let fpSunSaved = 2, fpHemiSaved = 1.15, fpFillSaved = 0.9;
+const fpSandboxOnly = [];
+function updateFpProjection() {
+  const aspect = Math.max(canvas.clientWidth / Math.max(canvas.clientHeight, 1), 0.2);
+  fpCamera.aspect = aspect;
+  fpCamera.fov = aspect < 0.8 ? 72 : 60;   // 接近人眼的视角，避免广角畸变带来的"模型感"
+  fpCamera.updateProjectionMatrix();
+}
+
 const FRUSTUM = 14.2;
 let camera = null;
 const cam = { zoom: 1, pitch: 0.72, dist: 42 };
 function applyCamera() {
+  if (fpMode) { updateFpProjection(); return; }
   if (!camera) return;
   const w = canvas.clientWidth, h = canvas.clientHeight;
   const aspect = w / h;
@@ -49,6 +79,7 @@ function makeCamera() {
   applyCamera();
 }
 makeCamera();
+activeCamera = camera;
 
 /* ---------------- 天空 ---------------- */
 const skyUniforms = {
@@ -127,7 +158,7 @@ const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({
   map: radialTexture('rgba(255,246,214,1)', 'rgba(255,190,110,0.55)'),
   transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
 }));
-sunSprite.scale.set(9, 9, 1);
+sunSprite.scale.set(6, 6, 1);
 scene.add(sunSprite);
 
 /* ---------------- 灯光 ---------------- */
@@ -190,7 +221,8 @@ const MAT = {
   warm: new THREE.MeshStandardMaterial({ color: 0xffdca8, emissive: 0xffbe6a, emissiveIntensity: 2.4, roughness: 0.4 }),
   glass: new THREE.MeshStandardMaterial({ color: 0x9dc0e4, emissive: 0x6fa8e0, emissiveIntensity: 0.45, roughness: 0.12, metalness: 0.95, transparent: true, opacity: 0.88, envMapIntensity: 1.5 }),
   car: new THREE.MeshStandardMaterial({ color: 0x2b3a52, roughness: 0.35, metalness: 0.7 }),
-  tyre: new THREE.MeshStandardMaterial({ color: 0x0b0f16, roughness: 0.95 })
+  tyre: new THREE.MeshStandardMaterial({ color: 0x0b0f16, roughness: 0.95 }),
+  pole: new THREE.MeshStandardMaterial({ color: 0x59626e, roughness: 0.62, metalness: 0.55 })
 };
 
 function box(w, h, d, mat, x, y, z, group) {
@@ -209,6 +241,7 @@ function buildBase() {
   const b2 = box(11.1, 0.9, 11.1, MAT.stone, 0, -0.62, 0, base);
   const top = box(10.5, 0.3, 10.5, MAT.pave, 0, -0.02, 0, base);
   const plaza = box(6.5, 0.32, 6.5, MAT.plaza, 0, 0.06, 0, base);
+  plaza.userData.sandboxOnly = true;   // 第一人称改由连续地面接管，不再有"摆在路中间的白色台子"
 
   // 道路
   box(10.5, 0.26, 1.8, MAT.road, 0, 0.05, 3.85, base);
@@ -232,6 +265,7 @@ function buildBase() {
   const glow = new THREE.Mesh(glowGeo, glowMat);
   glow.rotation.x = -Math.PI / 2;
   glow.position.y = 0.2;
+  glow.userData.sandboxOnly = true;    // 第一人称时隐藏：整片发光膜
   base.add(glow);
   base.userData.glow = glowMat;
 
@@ -248,12 +282,14 @@ pivot.add(base);
   under.position.y = -3.35;
   under.castShadow = true;
   under.receiveShadow = true;
+  under.userData.sandboxOnly = true;   // 第一人称时隐藏：悬空岛底座
   pivot.add(under);
 
   const mid = new THREE.Mesh(new THREE.ConeGeometry(7.05, 0.55, 8), MAT.stone);
   mid.rotation.x = Math.PI;
   mid.rotation.y = Math.PI / 8;
   mid.position.y = -1.35;
+  mid.userData.sandboxOnly = true;
   pivot.add(mid);
 }
 
@@ -268,7 +304,9 @@ pivot.add(base);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pts.flat(), 3));
   const mat = new THREE.LineBasicMaterial({ color: ACCENT, transparent: true, opacity: 0.28 });
-  pivot.add(new THREE.LineSegments(geo, mat));
+  const edge = new THREE.LineSegments(geo, mat);
+  edge.userData.sandboxOnly = true;    // 第一人称时隐藏：微缩模型的荧光描边
+  pivot.add(edge);
   pivot.userData.edge = mat;
 }
 
@@ -276,16 +314,17 @@ pivot.add(base);
 {
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({
     map: radialTexture('rgba(140,200,255,0.55)', 'rgba(90,150,255,0.12)'),
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.45
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.3
   }));
   halo.position.set(0, 3, -26);
-  halo.scale.set(46, 34, 1);
+  halo.scale.set(30, 22, 1);
   scene.add(halo);
 }
 
 /* 水面 / 湿地面 */
 const puddleMat = new THREE.MeshStandardMaterial({ color: 0x0d1a2b, metalness: 1, roughness: 0.06, transparent: true, opacity: 0 });
 const puddles = new THREE.Group();
+puddles.userData.sandboxOnly = true;   // 镜面水洼在人眼高度会把天空反射成一整块亮白，第一人称时隐藏
 [[2.2, 2.4, 0.9], [-2.6, 1.7, 0.7], [1.4, -2.8, 1.0], [-1.9, -2.4, 0.6]].forEach(([x, z, r]) => {
   const m = new THREE.Mesh(new THREE.CircleGeometry(r, 24), puddleMat);
   m.rotation.x = -Math.PI / 2;
@@ -311,12 +350,13 @@ function tree(x, z, s = 1) {
     g.add(leaves);
   });
   g.position.set(x, 0.2, z);
+  g.userData.sandboxOnly = true;   // 低模三角树：第一人称近看太假，只在沙盘俯视时保留
   return g;
 }
 
 function lamp(x, z) {
   const g = new THREE.Group();
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.9, 8), MAT.stoneDark);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.032, 1.9, 8), MAT.pole);
   pole.position.y = 0.95;
   pole.castShadow = true;
   g.add(pole);
@@ -384,6 +424,7 @@ function grassTuft(x, z, s) {
     g.add(blade);
   }
   g.position.set(x, 0.2, z);
+  g.userData.sandboxOnly = true;
   return g;
 }
 
@@ -405,6 +446,7 @@ function flowerBed(x, z, w, d) {
     g.add(head);
   }
   g.position.set(x, 0.2, z);
+  g.userData.sandboxOnly = true;
   return g;
 }
 
@@ -417,6 +459,7 @@ function bush(x, z, s) {
     g.add(b);
   }
   g.position.set(x, 0.2, z);
+  g.userData.sandboxOnly = true;
   return g;
 }
 
@@ -448,6 +491,7 @@ function contactShadow(x, z, r) {
   m.rotation.x = -Math.PI / 2;
   m.position.set(x, 0.205, z);
   m.renderOrder = 1;
+  m.userData.sandboxOnly = true;       // 俯视用的柔和接触阴影，贴地看是一块脏斑
   pivot.add(m);
   return m;
 }
@@ -509,6 +553,7 @@ function hedge(x, z, w, d, ry) {
     g.add(b);
   }
   g.position.set(x, 0.2, z); g.rotation.y = ry || 0;
+  g.userData.sandboxOnly = true;
   pivot.add(g);
   return g;
 }
@@ -1206,7 +1251,10 @@ function applyWeather(w) {
   skyUniforms.uBottom.value.copy(bottom);
   skyUniforms.uGlow.value.set(night > 0.55 ? pal.glowNight : pal.glowDay);
   scene.fog.color.copy(bottom).multiplyScalar(0.8);
-  scene.fog.density = mode === 'fog' ? 0.016 : mode === 'haze' ? 0.013 : mode === 'rain' ? 0.013 : 0.009;
+  const baseFog = mode === 'fog' ? 0.016 : mode === 'haze' ? 0.013 : mode === 'rain' ? 0.013 : 0.009;
+  currentBaseFog = baseFog;
+  // 第一人称按人眼尺度加强大气透视，让近景模型、远景照片与天空融为一层空气
+  scene.fog.density = fpMode ? Math.max(0.075, baseFog * 6.5) : baseFog;
 
   const sunPos = sunSprite.position;
   const horiz = new THREE.Vector3(sunPos.x, 0, sunPos.z).normalize();
@@ -1248,7 +1296,7 @@ function applyWeather(w) {
   MAT.pave.roughness = rainy ? 0.3 : 0.62;
   MAT.pave.metalness = rainy ? 0.55 : 0.25;
   puddleMat.opacity = rainy ? 0.85 : 0;
-  puddles.visible = rainy;
+  puddles.visible = rainy && !fpMode;   // 第一人称下始终关掉镜面水洼，避免天空反射成亮白块
 
   // 行人：按温度换衣、雨雪打伞
   const chilly = currentTemp;
@@ -1322,10 +1370,23 @@ function updateSun(hour) {
 let dragging = false, lastX = 0, spinVel = 0, userSpin = 0, idleTimer = 0;
 canvas.addEventListener('pointerdown', e => {
   if (window.Ambient) window.Ambient.start(W.mode || 'clear');
+  if (fpMode) {
+    fpDragging = true; fpLastX = e.clientX; fpLastY = e.clientY;
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+    return;
+  }
   dragging = true; lastX = e.clientX; window.__lastY = e.clientY; canvas.setPointerCapture(e.pointerId);
   idleTimer = 0;
 });
 canvas.addEventListener('pointermove', e => {
+  if (fpMode) {
+    // 指针锁定时由 mousemove 处理；未锁定时按住拖动也能转头
+    if (fpDragging && document.pointerLockElement !== canvas) {
+      fpLook(e.clientX - fpLastX, e.clientY - fpLastY);
+      fpLastX = e.clientX; fpLastY = e.clientY;
+    }
+    return;
+  }
   if (!dragging) return;
   const dx = e.clientX - lastX;
   const dy = e.clientY - (window.__lastY || e.clientY);
@@ -1339,12 +1400,16 @@ canvas.addEventListener('pointermove', e => {
 });
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
+  if (fpMode) return;               // 第一人称不缩放，避免破坏人眼视角
   cam.zoom = Math.min(2.4, Math.max(0.55, cam.zoom * (1 - e.deltaY * 0.0012)));
   applyCamera();
   idleTimer = 6;
 }, { passive: false });
-canvas.addEventListener('pointerup', e => { dragging = false; try { canvas.releasePointerCapture(e.pointerId); } catch (_) {} });
-canvas.addEventListener('pointercancel', () => { dragging = false; });
+canvas.addEventListener('pointerup', e => {
+  dragging = false; fpDragging = false;
+  try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+});
+canvas.addEventListener('pointercancel', () => { dragging = false; fpDragging = false; });
 
 
 
@@ -1539,13 +1604,19 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
 
-  if (!dragging) {
-    userSpin += spinVel;
-    spinVel *= 0.94;
-    if (idleTimer > 0) idleTimer -= dt;
-    else userSpin += dt * 0.045;
+  if (fpMode) {
+    // 漫游时场景本身不再自转，改由相机在街上移动
+    pivot.rotation.y = 0;
+    updateFP(dt);
+  } else {
+    if (!dragging) {
+      userSpin += spinVel;
+      spinVel *= 0.94;
+      if (idleTimer > 0) idleTimer -= dt;
+      else userSpin += dt * 0.045;
+    }
+    pivot.rotation.y = userSpin;
   }
-  pivot.rotation.y = userSpin;
 
   // 雨
   if (rain.visible) {
@@ -1661,7 +1732,7 @@ function animate() {
 
   fxUpdate(dt);
 
-  renderer.render(scene, camera);
+  renderer.render(scene, activeCamera);
   requestAnimationFrame(animate);
 }
 
@@ -1670,6 +1741,7 @@ function onResize() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
   renderer.setSize(w, h, false);
   applyCamera();
+  updateFpProjection();
 }
 window.addEventListener('resize', onResize);
 onResize();
@@ -1985,6 +2057,328 @@ async function load() {
   setTimeout(() => el('loading').remove(), 800);
 }
 
+/* =========================================================
+   第一人称漫游：站进城市里，用 WASD 在街上走
+   —— 透视相机 + 人眼高度 + 真实照片远景 + 铺装纹理 + 大气透视
+   ========================================================= */
+
+/* 程序化石砖纹理：细噪点 + 砖缝，近处地面不再是一整块塑料色 */
+function makePaveTexture() {
+  const S = 512;
+  const c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d');
+  g.fillStyle = '#c4cad3'; g.fillRect(0, 0, S, S);   // 偏亮灰：与材质原色相乘后仍保持原有色调
+  const im = g.getImageData(0, 0, S, S);
+  for (let i = 0; i < S * S; i++) {
+    const n = (Math.random() - 0.5) * 44;
+    im.data[i * 4] = Math.max(0, Math.min(255, im.data[i * 4] + n));
+    im.data[i * 4 + 1] = Math.max(0, Math.min(255, im.data[i * 4 + 1] + n));
+    im.data[i * 4 + 2] = Math.max(0, Math.min(255, im.data[i * 4 + 2] + n));
+  }
+  g.putImageData(im, 0, 0);
+  g.strokeStyle = 'rgba(10,16,26,0.5)'; g.lineWidth = 2;
+  for (let i = 0; i <= 4; i++) {
+    const p = i * S / 4 + 0.5;
+    g.beginPath(); g.moveTo(p, 0); g.lineTo(p, S); g.stroke();
+    g.beginPath(); g.moveTo(0, p); g.lineTo(S, p); g.stroke();
+  }
+  for (let i = 0; i < 2600; i++) {
+    g.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.045)' : 'rgba(0,0,0,0.07)';
+    g.fillRect(Math.random() * S, Math.random() * S, 1.6, 1.6);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  return t;
+}
+
+/* 墙面细纹理：颗粒与轻微水渍，消掉大块纯色的塑料感 */
+function makeWallTexture() {
+  const S = 256;
+  const c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d');
+  g.fillStyle = '#e8e8e8'; g.fillRect(0, 0, S, S);
+  const im = g.getImageData(0, 0, S, S);
+  for (let i = 0; i < S * S; i++) {
+    const n = (Math.random() - 0.5) * 26;
+    im.data[i * 4] = Math.max(0, Math.min(255, im.data[i * 4] + n));
+    im.data[i * 4 + 1] = Math.max(0, Math.min(255, im.data[i * 4 + 1] + n));
+    im.data[i * 4 + 2] = Math.max(0, Math.min(255, im.data[i * 4 + 2] + n));
+  }
+  g.putImageData(im, 0, 0);
+  for (let i = 0; i < 14; i++) {
+    const x = Math.random() * S, w = 2 + Math.random() * 10;
+    const gr = g.createLinearGradient(x, 0, x + w, 0);
+    gr.addColorStop(0, 'rgba(70,70,70,0)');
+    gr.addColorStop(0.5, 'rgba(70,70,70,0.09)');
+    gr.addColorStop(1, 'rgba(70,70,70,0)');
+    g.fillStyle = gr; g.fillRect(x, 0, w, S);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  return t;
+}
+
+/* 用当前城市的实景照片生成 360° 远景幕布：
+   近处是 3D 模型，远处是真实街景影像，上下渐变淡出与天空/地面衔接。 */
+function makeCityBackdropTexture() {
+  const W = 2048, H = 512;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const img = new Image();
+  img.onload = function () {
+    const sy = img.height * 0.16, sh = img.height * 0.78;
+    const dw = W / 3;
+    for (let i = 0; i < 3; i++) {
+      g.save();
+      if (i % 2) { g.translate((i + 1) * dw, 0); g.scale(-1, 1); }
+      else { g.translate(i * dw, 0); }
+      g.drawImage(img, 0, sy, img.width, sh, 0, 0, dw, H);
+      g.restore();
+    }
+    g.globalCompositeOperation = 'destination-in';
+    const grad = g.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(0.16, 'rgba(0,0,0,0.65)');
+    grad.addColorStop(0.34, 'rgba(0,0,0,1)');
+    grad.addColorStop(0.82, 'rgba(0,0,0,1)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad; g.fillRect(0, 0, W, H);
+    g.globalCompositeOperation = 'source-over';
+    tex.needsUpdate = true;
+  };
+  img.onerror = function () {};
+  img.src = 'img/' + cityId + '.jpg';
+  return tex;
+}
+
+function fpLook(dx, dy) {
+  fpYaw -= dx * 0.0026;
+  fpPitch = Math.max(-1.15, Math.min(1.15, fpPitch - dy * 0.0024));
+}
+
+function updateFP(dt) {
+  let fx = 0, fz = 0;
+  if (fpKeys['w'] || fpKeys['arrowup']) fz -= 1;
+  if (fpKeys['s'] || fpKeys['arrowdown']) fz += 1;
+  if (fpKeys['a'] || fpKeys['arrowleft']) fx -= 1;
+  if (fpKeys['d'] || fpKeys['arrowright']) fx += 1;
+  const len = Math.hypot(fx, fz) || 1;
+  fx /= len; fz /= len;
+  const moving = Math.hypot(fx, fz) > 0.01;
+  const sp = (fpKeys['shift'] ? 1.9 : 1) * WALK_SPEED;
+
+  // 局部方向 -> 世界方向（相机默认朝 -Z）
+  const sinY = Math.sin(fpYaw), cosY = Math.cos(fpYaw);
+  const dx = (fx * cosY + fz * sinY) * sp * dt;
+  const dz = (-fx * sinY + fz * cosY) * sp * dt;
+
+  let nx = Math.max(-WALK_LIMIT, Math.min(WALK_LIMIT, fpCamera.position.x + dx));
+  let nz = Math.max(-WALK_LIMIT, Math.min(WALK_LIMIT, fpCamera.position.z + dz));
+  const r = Math.hypot(nx, nz);
+  if (r < CORE_RADIUS) {
+    const k = CORE_RADIUS / (r || 0.0001);
+    nx *= k; nz *= k;                 // 不让镜头钻进地标里
+  }
+  fpCamera.position.x = nx;
+  fpCamera.position.z = nz;
+
+  // 走路时轻微起伏，静止时几乎不动
+  fpWalk += dt * (moving ? 9.5 : 1.5);
+  const target = Math.sin(fpWalk) * (moving ? 0.013 : 0.0025);
+  fpBob += (target - fpBob) * Math.min(1, dt * 10);
+  fpCamera.position.y = EYE_HEIGHT + fpBob;
+  fpCamera.rotation.set(fpPitch, fpYaw, 0);
+
+  // 远景照片随昼夜/天气变色，避免"贴上去"的割裂感
+  if (fpBackdropMat) fpBackdropMat.color.set(0xffffff).lerp(scene.fog.color, 0.6);
+}
+
+function enterFP() {
+  if (fpMode) return;
+  fpMode = true;
+  activeCamera = fpCamera;
+
+  // 视角附身到街上的一个行人：把他放到广场入口的街角，再隐藏他自己的模型
+  fpAttached = people.reduce(function (a, b) { return b.position.z > a.position.z ? b : a; }, people[0]) || null;
+  const sx = 3.15, sz = 4.35;
+  if (fpAttached) {
+    fpAttached.position.set(sx, 0.2, sz);
+    fpAttached.visible = false;
+  }
+  fpCamera.position.set(sx, EYE_HEIGHT, sz);
+  fpYaw = 0.92;                     // 斜看街道纵深，不正怼建筑立面
+  fpPitch = -0.05;
+  fpCamera.rotation.set(fpPitch, fpYaw, 0);
+  pivot.rotation.y = 0;
+  updateFpProjection();
+
+  // 微微收小地标 + 更强的大气透视：留出街道空间，避免"贴脸模型"感
+  if (landmark) landmark.scale.setScalar(0.98);
+  fpSavedExposure = renderer.toneMappingExposure;
+  renderer.toneMappingExposure = Math.min(fpSavedExposure, 1.08);
+  // 沙盘为了"发光模型感"用了很强的补光，人眼视角下会过曝成一片白，这里收回到自然日光
+  fpSunSaved = sun.intensity; fpHemiSaved = hemi.intensity; fpFillSaved = fill.intensity;
+  sun.intensity = Math.min(fpSunSaved, 1.75);
+  hemi.intensity = Math.min(fpHemiSaved, 0.85);
+  fill.intensity = Math.min(fpFillSaved, 0.28);
+
+  fpGround.visible = true;
+  fpBackdrop.visible = true;
+  fpSandboxOnly.forEach(function (o) { o.visible = false; });
+  scene.fog.density = Math.max(0.075, currentBaseFog * 6.5);
+
+  const panel = document.getElementById('panel');
+  fpPanelWasCollapsed = panel ? panel.classList.contains('collapsed') : false;
+  if (panel) panel.classList.add('collapsed');
+  document.getElementById('worldBtn').classList.add('hidden');
+  document.getElementById('fpHud').classList.remove('hidden');
+  const hint = document.getElementById('hint');
+  if (hint) hint.textContent = 'WASD 移动 · 鼠标转向 · Esc 退出';
+
+  // 指针锁定失败也没关系，按住画面拖动一样能转头
+  try { if (canvas.requestPointerLock) canvas.requestPointerLock(); } catch (_) {}
+}
+
+function exitFP() {
+  if (!fpMode) return;
+  fpMode = false;
+  activeCamera = camera;
+  if (document.pointerLockElement === canvas && document.exitPointerLock) {
+    try { document.exitPointerLock(); } catch (_) {}
+  }
+  if (fpAttached) fpAttached.visible = true;
+  fpAttached = null;
+  fpGround.visible = false;
+  fpBackdrop.visible = false;
+  fpSandboxOnly.forEach(function (o) { o.visible = true; });
+  if (landmark) landmark.scale.setScalar(1.32);
+  renderer.toneMappingExposure = fpSavedExposure;
+  sun.intensity = fpSunSaved; hemi.intensity = fpHemiSaved; fill.intensity = fpFillSaved;
+  scene.fog.density = currentBaseFog;
+  Object.keys(fpKeys).forEach(function (k) { fpKeys[k] = false; });
+
+  const panel = document.getElementById('panel');
+  if (panel) panel.classList.toggle('collapsed', fpPanelWasCollapsed);
+  document.getElementById('worldBtn').classList.remove('hidden');
+  document.getElementById('fpHud').classList.add('hidden');
+  const hint = document.getElementById('hint');
+  if (hint) hint.textContent = '拖动旋转 · 滚轮缩放';
+  applyCamera();
+}
+
+function initFP() {
+  const btn = document.getElementById('worldBtn');
+  const exitBtn = document.getElementById('fpExit');
+  const hud = document.getElementById('fpHud');
+  if (!btn || !hud) return;
+
+  // 收集只在俯视沙盘里才有意义的元素（悬空岛、荧光描边、发光膜）
+  pivot.traverse(function (o) {
+    if (o.userData && o.userData.sandboxOnly) fpSandboxOnly.push(o);
+  });
+  // 第一人称只留地标、路灯和天气粒子；沙盘里的微缩装饰（近处会糊成亮白块的那些）全部退场，
+  // 地面交给连续铺装，远景交给真实城市照片，这样画面才不会一眼看穿是玩具模型。
+  const fpKeep = new Set();
+  fpKeep.add(landmark);
+  lamps.forEach(function (l) { fpKeep.add(l); });
+  pivot.children.forEach(function (o) {
+    if (o.isPoints || o.isLineSegments || o.isSprite) fpKeep.add(o);
+    if (!fpKeep.has(o) && fpSandboxOnly.indexOf(o) < 0) fpSandboxOnly.push(o);
+  });
+
+  const pave = makePaveTexture();
+  pave.repeat.set(3, 3);
+  [MAT.pave, MAT.plaza, MAT.road].forEach(function (m) {
+    m.map = pave; m.bumpMap = pave; m.bumpScale = 0.01;
+    m.metalness = 0.1; m.roughness = 0.9;   // 哑光石/沥青，别把天空反射成一片白
+    m.needsUpdate = true;
+  });
+
+  // 建筑立面加细颗粒，近看不再是一整块纯色
+  const wallTex = makeWallTexture();
+  [wallRed, whiteWall, woodDark, brick, roofRed, gold].forEach(function (m) {
+    m.map = wallTex; m.bumpMap = wallTex; m.bumpScale = 0.004; m.needsUpdate = true;
+  });
+
+  // 地标内部材质同样加颗粒；米白石台基在阳光下会过曝成纯白，压成石材灰
+  const seenMats = new Set();
+  landmark.traverse(function (o) {
+    if (!o.isMesh) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    mats.forEach(function (m) {
+      if (!m || !m.isMeshStandardMaterial || m.map || seenMats.has(m)) return;
+      seenMats.add(m);
+      if (m.color && m.color.getHexString() === 'e7e2d4') m.color.set(0xa8a49a);
+      m.map = wallTex; m.bumpMap = wallTex; m.bumpScale = 0.004; m.needsUpdate = true;
+    });
+  });
+
+  // 一直延伸到地平线的街道地面，盖掉悬空岛边缘
+  const groundTex = pave.clone();
+  groundTex.needsUpdate = true;
+  groundTex.repeat.set(52, 52);
+  fpGround = new THREE.Mesh(
+    new THREE.PlaneGeometry(280, 280),
+    new THREE.MeshStandardMaterial({ map: groundTex, color: 0x8d97a6, roughness: 0.94, metalness: 0.04 })
+  );
+  fpGround.rotation.x = -Math.PI / 2;
+  fpGround.position.y = 0.155;
+  fpGround.receiveShadow = true;
+  fpGround.visible = false;
+  scene.add(fpGround);
+
+  // 真实城市照片围成远景：fog 关掉，靠色调与淡出融入空气
+  fpBackdropMat = new THREE.MeshBasicMaterial({
+    map: makeCityBackdropTexture(), side: THREE.BackSide,
+    transparent: true, depthWrite: false, fog: false, opacity: 0.62
+  });
+  fpBackdrop = new THREE.Mesh(
+    new THREE.CylinderGeometry(52, 52, 24, 64, 1, true), fpBackdropMat
+  );
+  fpBackdrop.position.y = -1;
+  fpBackdrop.visible = false;
+  scene.add(fpBackdrop);
+
+  btn.addEventListener('click', enterFP);
+  if (exitBtn) exitBtn.addEventListener('click', exitFP);
+
+  document.addEventListener('mousemove', function (e) {
+    if (fpMode && document.pointerLockElement === canvas) fpLook(e.movementX, e.movementY);
+  });
+  window.addEventListener('keydown', function (e) {
+    if (!fpMode) return;
+    const k = (e.key || '').toLowerCase();
+    if (k === 'escape') { exitFP(); return; }
+    fpKeys[k] = true;
+    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].indexOf(k) >= 0) e.preventDefault();
+  });
+  window.addEventListener('keyup', function (e) { fpKeys[(e.key || '').toLowerCase()] = false; });
+  window.addEventListener('blur', function () {
+    Object.keys(fpKeys).forEach(function (k) { fpKeys[k] = false; });
+  });
+
+  // 手机 / 触屏的虚拟方向键
+  document.querySelectorAll('.fp-pad button').forEach(function (b) {
+    const k = b.dataset.k;
+    const on = function (e) { e.preventDefault(); fpKeys[k] = true; };
+    const off = function (e) { e.preventDefault(); fpKeys[k] = false; };
+    b.addEventListener('pointerdown', on);
+    b.addEventListener('pointerup', off);
+    b.addEventListener('pointercancel', off);
+    b.addEventListener('pointerleave', off);
+  });
+
+  // 支持 scene.html?city=beijing&fp=1 直接以第一视角打开（便于分享与截图核对）
+  if (params.get('fp') === '1') setTimeout(enterFP, 1600);
+}
+
+initFP();
 fxResize();
 fxSeed();
 animate();

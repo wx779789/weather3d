@@ -83,10 +83,25 @@
     <button data-wx="fog">雾</button>
   </div>
 
-  <a class="world-btn" id="worldBtn" href="world.html">
-    <span class="wb-ico">❄</span>
-    <span class="wb-txt"><b>进入世界</b><i>京都雪庭 · 雪见私汤</i></span>
-  </a>
+  <button class="world-btn" id="worldBtn" type="button">
+    <span class="wb-ico">◎</span>
+    <span class="wb-txt"><b>进入第一视角</b><i>WASD 漫游 · 街头实景</i></span>
+  </button>
+
+  <!-- 第一人称漫游 HUD：默认隐藏，进入第一视角后显示 -->
+  <div class="fp-hud hidden" id="fpHud">
+    <div class="fp-cross"></div>
+    <button class="fp-exit" id="fpExit" type="button">退出漫游 · Esc</button>
+    <div class="fp-tip">W A S D 移动　·　鼠标转向（点击画面可锁定指针）　·　Shift 快走</div>
+    <div class="fp-pad">
+      <button data-k="w" type="button" aria-label="前进">↑</button>
+      <div>
+        <button data-k="a" type="button" aria-label="左移">←</button>
+        <button data-k="s" type="button" aria-label="后退">↓</button>
+        <button data-k="d" type="button" aria-label="右移">→</button>
+      </div>
+    </div>
+  </div>
 
   <div class="scene-hint" id="hint">拖动旋转 · 滚轮缩放</div>
   <div class="loading" id="loading">
@@ -102,9 +117,6 @@ window.addEventListener('error', function (e) {
 </script>
 <script>
   (function () {
-    var id = new URLSearchParams(location.search).get('city') || 'beijing';
-    var a = document.getElementById('worldBtn');
-    if (a) a.href = 'world.html?city=' + id;
     var b = document.querySelector('.back');
     if (b) b.href = 'select.html';
   })();
