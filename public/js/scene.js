@@ -1607,7 +1607,7 @@ async function fetchOpenMeteo() {
     now: {
       temp: Math.round(now.temperature_2m),
       wea: wmoText(now.weather_code),
-      precip: now.precipitation || 0,
+      precip: Math.max(now.precipitation || 0, (d.hourly.precipitation && d.hourly.precipitation[nowIdx >= 0 ? nowIdx : 0]) || 0),
       wd: windDir(now.wind_direction_10m),
       ws: Math.round(now.wind_speed_10m) + 'km/h',
       sd: Math.round(now.relative_humidity_2m) + '%',
