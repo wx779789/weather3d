@@ -827,6 +827,63 @@ function buildLandmark() {
     }
   }
 
+  /* ================= 厦门 · 世茂双子塔 ================= */
+  if (t === 'twin') {
+    // 裙楼
+    box(2.9, 0.22, 1.7, MAT.stone, 0, 0.31, 0, g);
+    box(2.5, 0.16, 1.4, MAT.stoneDark, 0, 0.5, 0, g);
+
+    const shell = new THREE.MeshStandardMaterial({
+      color: 0xcfe2f4, metalness: 0.85, roughness: 0.18,
+      emissive: 0x8fc4ff, emissiveIntensity: 0.18, envMapIntensity: 1.6
+    });
+
+    [-1, 1].forEach((side, idx) => {
+      const x = side * 0.73;
+      // 塔身：三段收分
+      const segs = [
+        { w: 0.56, h: 1.45, y: 0.62, d: 0.42 },
+        { w: 0.5, h: 1.05, y: 2.07, d: 0.37 },
+        { w: 0.44, h: 0.7, y: 3.12, d: 0.32 }
+      ];
+      segs.forEach((sg) => {
+        const b = new THREE.Mesh(new THREE.BoxGeometry(sg.w, sg.h, sg.d), shell);
+        b.position.set(x, sg.y + sg.h / 2, 0);
+        b.castShadow = true;
+        b.receiveShadow = true;
+        g.add(b);
+      });
+      // 曲面冠顶（帆形）
+      const crown = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.5, 12, 1, false), shell);
+      crown.position.set(x, 4.02, 0);
+      crown.scale.set(0.8, 1, 0.6);
+      crown.rotation.z = side * 0.05;
+      crown.castShadow = true;
+      g.add(crown);
+      // 立面竖向线条
+      for (let i = -2; i <= 2; i++) {
+        box(0.012, 3.2, 0.012, MAT.line, x + i * 0.095, 2.0, 0.19, g);
+      }
+      // 亮窗
+      const win = windowsPlane(0.42, 3.1, 4, 22, '#dcefff');
+      const wm = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 3.1), win);
+      wm.position.set(x, 2.05, 0.2);
+      g.add(wm);
+      const wm2 = wm.clone();
+      wm2.position.z = -0.2;
+      wm2.rotation.y = Math.PI;
+      g.add(wm2);
+      // 塔顶航空灯
+      const lampTop = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), MAT.warm);
+      lampTop.position.set(x, 4.3, 0);
+      g.add(lampTop);
+    });
+
+    // 空中连廊
+    box(1.45, 0.12, 0.3, MAT.glass, 0, 2.55, 0, g);
+    box(1.45, 0.02, 0.32, MAT.line, 0, 2.63, 0, g);
+  }
+
   /* ================= 深圳平安 / 长沙国金 ================= */
   if (t === 'skyline') {
     // 主塔：锥形 + 冠顶

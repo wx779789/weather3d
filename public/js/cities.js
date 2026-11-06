@@ -15,7 +15,7 @@ window.CITIES = [
   { id: 'nanjing',   name: '南京',   province: '江苏省',     code: '101190101', type: 'gate',    landmark: '夫子庙',       accent: '#c9b6ff', lat: 32.06, lng: 118.80 },
   { id: 'changsha',  name: '长沙',   province: '湖南省',     code: '101250101', type: 'skyline', landmark: '国金中心',     accent: '#ff9f76', lat: 28.23, lng: 112.94 },
   { id: 'shaoxing',  name: '绍兴',   province: '浙江省',     code: '101210501', type: 'bridge',  landmark: '八字桥',       accent: '#9fe0d0', lat: 30.00, lng: 120.58 },
-  { id: 'xiamen',    name: '厦门',   province: '福建省',     code: '101230201', type: 'skyline', landmark: '海峡世茂双子塔', accent: '#7fd8ff', lat: 24.48, lng: 118.09 },
+  { id: 'xiamen',    name: '厦门',   province: '福建省',     code: '101230201', type: 'twin',    landmark: '海峡世茂双子塔', accent: '#7fd8ff', lat: 24.48, lng: 118.09 },
   { id: 'putian',    name: '莆田',   province: '福建省',     code: '101230401', type: 'pagoda',  landmark: '广化寺塔',     accent: '#f0c987', lat: 25.45, lng: 119.01 },
   { id: 'lanzhou',   name: '兰州',   province: '甘肃省',     code: '101160101', type: 'bridge',  landmark: '中山桥',       accent: '#9ad0ff', lat: 36.06, lng: 103.83 }
 ];

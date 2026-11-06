@@ -430,6 +430,87 @@
     setTimeout(() => { location.href = 'scene.html?city=' + city.id; }, 320);
   }
 
+  /* ---------- 定位当前城市 ---------- */
+  const locateBtn = document.getElementById('locateBtn');
+  const locateText = document.getElementById('locateText');
+
+  function haversine(a, b, c, d) {
+    const R = 6371, toRad = x => x * Math.PI / 180;
+    const dLat = toRad(c - a), dLon = toRad(d - b);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a)) * Math.cos(toRad(c)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+
+  function nearestCity(lat, lng) {
+    let best = 0, bestD = Infinity;
+    cities.forEach((c, i) => {
+      const d = haversine(lat, lng, c.lat, c.lng);
+      if (d < bestD) { bestD = d; best = i; }
+    });
+    return { index: best, km: bestD };
+  }
+
+  function toast(msg) {
+    let el = document.querySelector('.toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'toast';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(el.__t);
+    el.__t = setTimeout(() => el.classList.remove('show'), 2600);
+  }
+
+  function goTo(index, km) {
+    const n = cities.length;
+    // 选择离当前位置最近的一圈
+    let delta = ((index - state.pos) % n + n) % n;
+    if (delta > n / 2) delta -= n;
+    state.target = Math.round(state.pos) + delta;
+    const c = cities[index];
+    toast('已定位到 ' + c.name + (km ? ' · 距离约 ' + Math.round(km) + ' km' : ''));
+  }
+
+  function locate(manual) {
+    if (!navigator.geolocation) {
+      if (manual) toast('当前浏览器不支持定位');
+      return;
+    }
+    if (manual) {
+      locateBtn.classList.add('busy');
+      locateText.textContent = '定位中…';
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const { latitude, longitude } = pos.coords;
+        const { index, km } = nearestCity(latitude, longitude);
+        goTo(index, km);
+        locateBtn.classList.remove('busy');
+        locateBtn.classList.add('ok');
+        locateText.textContent = '已定位 · ' + cities[index].name;
+      },
+      err => {
+        locateBtn.classList.remove('busy');
+        if (manual) {
+          locateText.textContent = '定位失败，点此重试';
+          toast(err.code === 1 ? '定位权限被拒绝，可在浏览器设置里允许' : '定位失败，请检查网络或 GPS');
+        }
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
+    );
+  }
+
+  if (locateBtn) {
+    locateBtn.addEventListener('click', () => locate(true));
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'geolocation' }).then(r => {
+        if (r.state === 'granted') locate(false);
+      }).catch(() => {});
+    }
+  }
+
   window.addEventListener('resize', () => { resize(); });
   resize();
   state.pos = 0;
