@@ -415,3 +415,34 @@
   .wxbar-label { display: none; }
   .wxbar button { padding: 5px 10px; font-size: 11px; }
 }
+
+.world-btn {
+  position: absolute;
+  left: clamp(18px, 2.6vw, 40px);
+  bottom: clamp(96px, 14vh, 130px);
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px 10px 13px;
+  border-radius: 16px;
+  border: 1px solid rgba(160, 210, 255, 0.22);
+  background: linear-gradient(140deg, rgba(24, 40, 62, 0.75), rgba(12, 20, 34, 0.6));
+  color: #eaf4ff;
+  text-decoration: none;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+  z-index: 8;
+  transition: transform .22s, border-color .22s;
+}
+.world-btn:hover { transform: translateY(-2px); border-color: rgba(160, 220, 255, 0.5); }
+.wb-ico {
+  width: 26px; height: 26px; display: grid; place-items: center;
+  border-radius: 50%; font-size: 13px;
+  background: rgba(140, 210, 255, 0.14); color: #9fd8ff;
+}
+.wb-txt { display: flex; flex-direction: column; gap: 2px; line-height: 1.2; }
+.wb-txt b { font-size: 13px; letter-spacing: .12em; font-weight: 600; }
+.wb-txt i { font-style: normal; font-size: 10px; letter-spacing: .08em; color: rgba(200, 225, 255, 0.5); }
+
+@media (max-width: 860px) {
+  .world-btn { bottom: auto; top: 84px; left: 12px; padding: 8px 12px; }
+  .wb-txt i { display: none; }
+}

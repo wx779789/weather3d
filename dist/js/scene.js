@@ -1259,6 +1259,12 @@ function applyWeather(w) {
     per.userData.umbrella.visible = withUmbrella;
   });
 
+  // 环境音
+  if (window.Ambient) {
+    const AM = { rain: 'rain', thunder: 'thunder', snow: 'snow', fog: 'fog', haze: 'haze', overcast: 'overcast', cloudy: 'cloudy', clear: 'clear' };
+    window.Ambient.setMode(AM[mode] || 'clear', mode === 'rain' || mode === 'thunder' ? 0.9 : 0.7);
+  }
+
   // 全屏天气层
   fx.mode = mode;
   fx.night = night;
@@ -1315,6 +1321,7 @@ function updateSun(hour) {
 /* ---------------- 交互：拖动旋转 ---------------- */
 let dragging = false, lastX = 0, spinVel = 0, userSpin = 0, idleTimer = 0;
 canvas.addEventListener('pointerdown', e => {
+  if (window.Ambient) window.Ambient.start(W.mode || 'clear');
   dragging = true; lastX = e.clientX; window.__lastY = e.clientY; canvas.setPointerCapture(e.pointerId);
   idleTimer = 0;
 });
@@ -1625,6 +1632,7 @@ function animate() {
     if (flashTimer <= 0) {
       flashTimer = 3 + Math.random() * 5;
       flashT = 1;
+      if (window.Ambient) window.Ambient.thunder();
     }
     if (flashT > 0) {
       flashT -= dt * 3.2;

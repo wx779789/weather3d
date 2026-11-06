@@ -83,6 +83,11 @@
     <button data-wx="fog">雾</button>
   </div>
 
+  <a class="world-btn" id="worldBtn" href="world.html">
+    <span class="wb-ico">❄</span>
+    <span class="wb-txt"><b>进入世界</b><i>京都雪庭 · 雪见私汤</i></span>
+  </a>
+
   <div class="scene-hint" id="hint">拖动旋转 · 滚轮缩放</div>
   <div class="loading" id="loading">
     <div class="spinner"></div>
@@ -95,7 +100,17 @@ window.addEventListener('error', function (e) {
   if (l) l.innerHTML = '<pre style="color:#ff8a8a;font:12px/1.6 monospace;max-width:90%;white-space:pre-wrap;text-align:left">' + (e.message || e.error) + '\n' + (e.filename || '') + ':' + e.lineno + '</pre>';
 });
 </script>
-<script src="js/cities.js"></script>
+<script>
+  (function () {
+    var id = new URLSearchParams(location.search).get('city') || 'beijing';
+    var a = document.getElementById('worldBtn');
+    if (a) a.href = 'world.html?city=' + id;
+    var b = document.querySelector('.back');
+    if (b) b.href = 'select.html';
+  })();
+</script>
+  <script src="js/cities.js"></script>
+  <script src="js/audio.js"></script>
   <script type="module" src="js/scene.js"></script>
 </body>
 </html>
