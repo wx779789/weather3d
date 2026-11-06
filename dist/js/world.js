@@ -41,8 +41,8 @@ const MAT = {
   woodDark: toon(0x5c3d27),
   woodLight: toon(0xc79a63),
   tatami: toon(0xc9b478),
-  snow: toon(0xf2f7ff),
-  snowShade: toon(0xd6e4f5),
+  snow: toon(0xf6fbff, { emissive: 0x2b3f63, emissiveIntensity: 0.22 }),
+  snowShade: toon(0xd8e3f7, { emissive: 0x24365a, emissiveIntensity: 0.18 }),
   stone: toon(0x6d7683),
   stoneDark: toon(0x4a525e),
   tile: toon(0x53606e),
@@ -257,48 +257,67 @@ box(0.1, 2.4, 3.4, MAT.wood, -2.5, 1.4, 0, house);
 });
 
 
-/* ---------- 主景：横展雪枝（覆雪大枝） ---------- */
+/* ---------- 主景：横展雪枝（递归分叉 + 雪团） ---------- */
 const archGroup = new THREE.Group();
 scene.add(archGroup);
 {
   const trunkX = -5.4, trunkZ = -2.2;
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.42, 3.4, 10), MAT.trunk);
-  trunk.position.set(trunkX, 1.7, trunkZ);
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.46, 3.6, 10), MAT.trunk);
+  trunk.position.set(trunkX, 1.8, trunkZ);
   trunk.castShadow = true;
   archGroup.add(trunk);
 
-  function snowBranch(pts, r) {
-    const curve = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(p[0], p[1], p[2])));
-    const wood = new THREE.Mesh(new THREE.TubeGeometry(curve, 26, r, 7, false), MAT.trunk);
-    wood.castShadow = true;
-    archGroup.add(wood);
-    // 雪脊（沿枝上缘）
-    const snowPts = pts.map(p => new THREE.Vector3(p[0], p[1] + r * 0.85, p[2]));
-    const sc = new THREE.CatmullRomCurve3(snowPts);
-    const snow = new THREE.Mesh(new THREE.TubeGeometry(sc, 26, r * 0.92, 7, false), MAT.snow);
-    snow.castShadow = true;
-    archGroup.add(snow);
-    // 垂枝
-    for (let i = 1; i < pts.length - 1; i++) {
-      const base = pts[i];
-      const drop = 0.5 + Math.random() * 0.9;
-      const t = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(base[0], base[1], base[2]),
-        new THREE.Vector3(base[0] + (Math.random() - 0.5) * 0.5, base[1] - drop * 0.5, base[2] + (Math.random() - 0.5) * 0.5),
-        new THREE.Vector3(base[0] + (Math.random() - 0.5) * 0.9, base[1] - drop, base[2] + (Math.random() - 0.5) * 0.9)
-      ]);
-      const twig = new THREE.Mesh(new THREE.TubeGeometry(t, 10, r * 0.35, 5, false), MAT.trunk);
-      archGroup.add(twig);
-      const snowTwig = new THREE.Mesh(new THREE.TubeGeometry(t, 10, r * 0.3, 5, false), MAT.snow);
-      snowTwig.position.y = r * 0.12;
-      archGroup.add(snowTwig);
+  const clumps = [];
+  function grow(startP, dir, len, rad, depth) {
+    const endP = startP.clone().add(dir.clone().normalize().multiplyScalar(len));
+    const mid = startP.clone().add(endP).multiplyScalar(0.5);
+    const geo = new THREE.CylinderGeometry(rad * 0.74, rad, len, 6);
+    const m = new THREE.Mesh(geo, MAT.trunk);
+    m.position.copy(mid);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+    m.castShadow = true;
+    archGroup.add(m);
+    // 枝上雪团
+    const n = depth >= 2 ? 4 : 2;
+    for (let i = 0; i < n; i++) {
+      const t = 0.25 + (i / n) * 0.7;
+      const pnt = startP.clone().lerp(endP, t);
+      pnt.y += rad * 0.9;
+      pnt.x += (Math.random() - 0.5) * rad * 2.2;
+      pnt.z += (Math.random() - 0.5) * rad * 2.2;
+      clumps.push(pnt);
+    }
+    if (depth <= 0) return;
+    const kids = 2 + (Math.random() < 0.5 ? 1 : 0);
+    for (let i = 0; i < kids; i++) {
+      const nd = dir.clone()
+        .add(new THREE.Vector3((Math.random() - 0.5) * 1.1, -0.3 - Math.random() * 0.5, (Math.random() - 0.5) * 1.1))
+        .normalize();
+      grow(endP.clone(), nd, len * (0.58 + Math.random() * 0.1), rad * 0.62, depth - 1);
     }
   }
 
-  snowBranch([[trunkX, 3.1, trunkZ], [-3.6, 3.9, -2.4], [-1.6, 4.35, -2.6], [0.8, 4.3, -2.8], [2.6, 4.0, -3.0]], 0.17);
-  snowBranch([[-3.9, 3.6, -2.3], [-2.6, 4.2, -1.4], [-0.9, 4.25, -0.8], [0.9, 4.0, -0.9], [2.2, 3.6, -1.1]], 0.13);
-  snowBranch([[-4.6, 3.3, -2.2], [-4.2, 3.9, -0.8], [-3.6, 4.15, 0.4], [-2.6, 4.05, 1.4]], 0.11);
-  snowBranch([[-2.4, 4.15, -2.5], [-2.0, 4.5, -1.6], [-1.2, 4.55, -0.6], [-0.2, 4.3, 0.1]], 0.09);
+  const tops = [
+    [new THREE.Vector3(trunkX, 3.3, trunkZ), new THREE.Vector3(1, 0.55, -0.12), 1.9, 0.19, 3],
+    [new THREE.Vector3(trunkX, 3.1, trunkZ), new THREE.Vector3(1, 0.32, 0.45), 1.7, 0.15, 3],
+    [new THREE.Vector3(trunkX, 2.9, trunkZ), new THREE.Vector3(0.6, 0.5, 0.9), 1.4, 0.13, 2],
+    [new THREE.Vector3(trunkX + 0.4, 3.5, trunkZ + 0.2), new THREE.Vector3(0.8, 0.75, 0.15), 1.5, 0.12, 2]
+  ];
+  tops.forEach(([p0, dir, len, rad, d]) => grow(p0, dir, len, rad, d));
+
+  // 雪团实例化
+  const cg = new THREE.SphereGeometry(0.13, 8, 6);
+  const inst = new THREE.InstancedMesh(cg, MAT.snow, clumps.length);
+  const mtx = new THREE.Matrix4();
+  clumps.forEach((p, i) => {
+    const k = 0.6 + Math.random() * 1.1;
+    mtx.makeScale(k, k * 0.62, k);
+    mtx.setPosition(p);
+    inst.setMatrixAt(i, mtx);
+  });
+  inst.castShadow = true;
+  inst.instanceMatrix.needsUpdate = true;
+  archGroup.add(inst);
 }
 
 /* ---------- 雪堆（池岸 / 廊边） ---------- */
@@ -476,6 +495,34 @@ scene.add(onsen);
   towel.position.set(1.45, 0.12, 0.62); scene.add(towel);
 }
 
+
+/* ---------- 雪地闪光 ---------- */
+{
+  const N = 420;
+  const pos = new Float32Array(N * 3);
+  const ph = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const a = Math.random() * Math.PI * 2, r = Math.random() * 9;
+    pos[i * 3] = Math.cos(a) * r;
+    pos[i * 3 + 1] = 0.02 + Math.random() * 0.06;
+    pos[i * 3 + 2] = Math.sin(a) * r;
+    ph[i] = Math.random() * 6.28;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.045, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending, map: (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 32;
+    const x = c.getContext('2d');
+    const g = x.createRadialGradient(16, 16, 0, 16, 16, 16);
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.4, 'rgba(210,235,255,0.6)'); g.addColorStop(1, 'rgba(210,235,255,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 32, 32);
+    return new THREE.CanvasTexture(c);
+  })() });
+  window.__sparkle = new THREE.Points(geo, mat);
+  window.__sparkle.userData.ph = ph;
+  scene.add(window.__sparkle);
+}
+
 /* ---------- 城市地标剪影（模型后方） ---------- */
 {
   const g = new THREE.Group();
@@ -562,8 +609,8 @@ sun.shadow.camera.left = -10; sun.shadow.camera.right = 10;
 sun.shadow.camera.top = 10; sun.shadow.camera.bottom = -10;
 sun.shadow.bias = -0.0008;
 scene.add(sun);
-const fill = new THREE.DirectionalLight(0x9fc0ff, 0.5);
-fill.position.set(5, 5, -4);
+const fill = new THREE.DirectionalLight(0x7f9fe0, 0.75);
+fill.position.set(5, 4, -5);
 scene.add(fill);
 
 const PRESETS = {
@@ -768,6 +815,8 @@ function animate() {
     camera.position.x = Math.sin(t * 0.06) * 0.35;
     camera.lookAt(0, 1.25, 0);
   }
+
+  if (window.__sparkle) window.__sparkle.material.opacity = 0.55 + Math.sin(t * 2.2) * 0.25;
 
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
