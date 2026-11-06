@@ -1206,7 +1206,7 @@ function applyWeather(w) {
   skyUniforms.uBottom.value.copy(bottom);
   skyUniforms.uGlow.value.set(night > 0.55 ? pal.glowNight : pal.glowDay);
   scene.fog.color.copy(bottom).multiplyScalar(0.8);
-  scene.fog.density = mode === 'fog' ? 0.045 : mode === 'haze' ? 0.032 : mode === 'rain' ? 0.02 : 0.012;
+  scene.fog.density = mode === 'fog' ? 0.016 : mode === 'haze' ? 0.013 : mode === 'rain' ? 0.013 : 0.009;
 
   const sunPos = sunSprite.position;
   const horiz = new THREE.Vector3(sunPos.x, 0, sunPos.z).normalize();
@@ -1214,8 +1214,9 @@ function applyWeather(w) {
 
   updateEnv(top, bottom);
 
-  hemi.intensity = night > 0.55 ? 0.85 : 1.25;
-  sun.intensity = night > 0.55 ? 0.35 : ({ clear: 2.4, cloudy: 1.5, overcast: 1.0, rain: 0.8, snow: 1.6, fog: 1.1, haze: 1.2 }[mode] || 2.0);
+  renderer.toneMappingExposure = night > 0.55 ? 1.22 : (mode === 'clear' ? 1.46 : 1.3);
+  hemi.intensity = night > 0.55 ? 0.85 : (mode === 'clear' ? 1.45 : 1.25);
+  sun.intensity = night > 0.55 ? 0.35 : ({ clear: 3.2, cloudy: 1.5, overcast: 1.0, rain: 0.8, snow: 1.6, fog: 1.1, haze: 1.2 }[mode] || 2.0);
   sun.color.set(night > 0.55 ? 0x8fb0e0 : (mode === 'clear' ? 0xfff0d0 : 0xdfe6f0));
   fill.intensity = night > 0.55 ? 0.6 : 0.35;
 
@@ -1339,6 +1340,31 @@ canvas.addEventListener('pointerup', e => { dragging = false; try { canvas.relea
 canvas.addEventListener('pointercancel', () => { dragging = false; });
 
 
+
+/* ---------- 雨滴落在模型上的溅水 ---------- */
+const splashGeo = new THREE.RingGeometry(0.035, 0.055, 14);
+const splashes = [];
+for (let i = 0; i < 46; i++) {
+  const m = new THREE.Mesh(splashGeo, new THREE.MeshBasicMaterial({
+    color: 0xcfebff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false
+  }));
+  m.rotation.x = -Math.PI / 2;
+  m.visible = false;
+  m.userData = { life: 0 };
+  pivot.add(m);
+  splashes.push(m);
+}
+
+function spawnSplash() {
+  const m = splashes.find(x => !x.visible);
+  if (!m) return;
+  m.position.set((Math.random() - 0.5) * 9.4, 0.215, (Math.random() - 0.5) * 9.4);
+  m.scale.setScalar(0.5);
+  m.material.opacity = 0.55;
+  m.visible = true;
+  m.userData.life = 0.55;
+}
+
 /* ---------------- 全屏天气层（雨 / 雪 / 晴 / 雾） ---------------- */
 const fxCanvas = document.getElementById('wxfx');
 const fxCtx = fxCanvas ? fxCanvas.getContext('2d') : null;
@@ -1363,7 +1389,7 @@ function fxSeed() {
   }
   const m = Math.round(80 + 220 * fx.intensity);
   for (let i = 0; i < m; i++) {
-    fx.flakes.push({ x: Math.random() * w, y: Math.random() * h, r: 1 + Math.random() * 2.4, v: 30 + Math.random() * 60, p: Math.random() * 9 });
+    fx.flakes.push({ x: Math.random() * w, y: Math.random() * h, r: 1.6 + Math.random() * 2.8, v: 26 + Math.random() * 46, p: Math.random() * 9 });
   }
 }
 
@@ -1379,7 +1405,7 @@ function fxUpdate(dt) {
   if (fx.mode === 'clear' || fx.mode === 'cloudy') {
     const day = 1 - fx.night;
     if (day > 0.15) {
-      const sx = w * 0.82, sy = h * 0.12, R = Math.min(w, h) * 0.42;
+      const sx = w * 0.13, sy = h * 0.14, R = Math.min(w, h) * 0.55;
       const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, R);
       g.addColorStop(0, 'rgba(255,240,200,' + (0.55 * day) + ')');
       g.addColorStop(0.25, 'rgba(255,215,150,' + (0.16 * day) + ')');
@@ -1390,7 +1416,7 @@ function fxUpdate(dt) {
       ctx.save();
       ctx.translate(sx, sy);
       for (let i = 0; i < 6; i++) {
-        ctx.rotate(Math.PI / 3 + Math.sin(fx.t * 0.05 + i) * 0.03);
+        ctx.rotate(Math.PI / 6 + i * Math.PI / 3 + Math.sin(fx.t * 0.05 + i) * 0.03);
         const lg = ctx.createLinearGradient(0, 0, R * 1.1, 0);
         lg.addColorStop(0, 'rgba(255,235,190,' + (0.10 * day) + ')');
         lg.addColorStop(1, 'rgba(255,235,190,0)');
@@ -1409,6 +1435,31 @@ function fxUpdate(dt) {
       g.addColorStop(1, 'rgba(190,220,255,0)');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
+    }
+  }
+
+
+  // 多云 / 阴：慢慢飘过的云
+  if (fx.mode === 'cloudy' || fx.mode === 'overcast') {
+    const n = fx.mode === 'overcast' ? 7 : 5;
+    const alpha = fx.mode === 'overcast' ? 0.20 : 0.14;
+    for (let i = 0; i < n; i++) {
+      const cw = Math.min(w, h) * (0.28 + (i % 3) * 0.12);
+      const speed = 6 + (i % 4) * 3;
+      const x = ((fx.t * speed + i * 320) % (w + cw * 2)) - cw;
+      const y = h * (0.10 + ((i * 0.13) % 0.42));
+      const g = ctx.createRadialGradient(x, y, 0, x, y, cw);
+      g.addColorStop(0, 'rgba(232,240,250,' + alpha + ')');
+      g.addColorStop(0.45, 'rgba(210,225,242,' + alpha * 0.6 + ')');
+      g.addColorStop(1, 'rgba(210,225,242,0)');
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(1, 0.42);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(0, 0, cw, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
   }
 
@@ -1434,10 +1485,20 @@ function fxUpdate(dt) {
         f.y += f.v * dt * (0.5 + fx.intensity);
         f.x += Math.sin(fx.t * 0.8 + f.p) * 12 * dt;
         if (f.y > h) { f.y = -10; f.x = Math.random() * w; }
-        ctx.fillStyle = 'rgba(240,248,255,' + (0.35 + 0.35 * fx.intensity) + ')';
-        ctx.beginPath();
-        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
-        ctx.fill();
+        const R = f.r * 1.9;
+        ctx.save();
+        ctx.translate(f.x, f.y);
+        ctx.rotate(fx.t * 0.6 + f.p);
+        ctx.strokeStyle = 'rgba(244,250,255,' + (0.55 + 0.35 * fx.intensity) + ')';
+        ctx.lineWidth = Math.max(0.8, f.r * 0.6);
+        ctx.lineCap = 'round';
+        for (let k = 0; k < 3; k++) {
+          ctx.beginPath();
+          ctx.moveTo(-R, 0); ctx.lineTo(R, 0);
+          ctx.stroke();
+          ctx.rotate(Math.PI / 3);
+        }
+        ctx.restore();
       }
     }
     // 底部水汽
@@ -1576,6 +1637,19 @@ function animate() {
   } else {
     skyUniforms.uFlash.value = 0;
   }
+
+  // 溅水动画
+  if (W.wet > 0.5 && (fx.mode === 'rain' || fx.mode === 'thunder')) {
+    for (let i = 0; i < 2; i++) if (Math.random() < 0.8) spawnSplash();
+  }
+  splashes.forEach(m => {
+    if (!m.visible) return;
+    m.userData.life -= dt;
+    if (m.userData.life <= 0) { m.visible = false; return; }
+    const k = 1 - m.userData.life / 0.55;
+    m.scale.setScalar(0.5 + k * 3.2);
+    m.material.opacity = 0.55 * (1 - k);
+  });
 
   fxUpdate(dt);
 
