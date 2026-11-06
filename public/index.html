@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>天气视界 · 3D 城市天气可视化</title>
+<link rel="stylesheet" href="css/base.css" />
+<link rel="stylesheet" href="css/cover.css" />
+</head>
+<body class="cover-page grain">
+  <div class="aurora aurora-a"></div>
+  <div class="aurora aurora-b"></div>
+  <div class="grid-floor"></div>
+  <canvas id="mist" class="mist"></canvas>
+
+  <main class="cover">
+    <header class="cover-head">
+      <span class="dot"></span>
+      <span>WEATHER DIORAMA</span>
+      <span class="sep"></span>
+      <span>全国 <b id="cityCount">18</b> 城 · 实时气象</span>
+    </header>
+
+    <div class="cover-body">
+      <div class="cover-copy">
+        <h1>天气视界</h1>
+        <p class="tagline">把一座城市，装进一块会下雨的积木</p>
+        <p class="desc">
+          选择一座城市，就能看到属于它的 3D 地标微缩模型：天空的光色、云的厚度、
+          雨雪与雾，都跟随当地此刻的真实天气变化；模型旁边是此刻的温度、24 小时与未来 7 天。
+        </p>
+        <div class="cover-actions">
+          <button id="enter" class="specular-button specular-button--lg" type="button">
+            <canvas class="specular-button__light" aria-hidden="true"></canvas>
+            <span class="specular-button__label">进入城市选择</span>
+          </button>
+          <span class="cover-note">数据来源 · 中国天气网</span>
+        </div>
+      </div>
+
+      <div class="cover-stage" aria-hidden="true">
+        <div class="floating-card card-sun">
+          <div class="ic ic-sun"></div>
+          <div class="fc-text"><b>晴</b><span>能见度 30 km</span></div>
+        </div>
+        <div class="floating-card card-rain">
+          <div class="ic ic-rain"></div>
+          <div class="fc-text"><b>小雨</b><span>降水 2.4 mm</span></div>
+        </div>
+        <div class="floating-card card-snow">
+          <div class="ic ic-snow"></div>
+          <div class="fc-text"><b>小雪</b><span>-3 ℃</span></div>
+        </div>
+        <div class="hero-card"><canvas id="heroArt" width="512" height="680"></canvas><div class="hero-glow"></div></div>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/cities.js"></script>
+  <script src="js/cardart.js"></script>
+  <script src="js/cover.js"></script>
+</body>
+</html>
