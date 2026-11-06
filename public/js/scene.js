@@ -1594,6 +1594,13 @@ async function fetchOpenMeteo() {
       code: d.hourly.weather_code[k] >= 50 ? 'n50' : 'd00'
     });
   }
+  const hIdx = nowIdx >= 0 ? nowIdx : 0;
+  const hourWea = wmoText((d.hourly.weather_code || [])[hIdx] || now.weather_code);
+  const hourPrecip = (d.hourly.precipitation || [])[hIdx] || 0;
+  const wet = /雨|雪|雷/.test(hourWea);
+  const nowWea = wet ? hourWea : wmoText(now.weather_code);
+  const nowPrecip = Math.max(now.precipitation || 0, hourPrecip, wet ? 0.25 : 0);
+
   const days = d.daily.time.slice(0, 7).map((t, i) => ({
     label: i === 0 ? '今天' : i === 1 ? '明天' : i === 2 ? '后天' : t.slice(5).replace('-', '日'),
     wea: wmoText(d.daily.weather_code[i]),
@@ -1606,8 +1613,8 @@ async function fetchOpenMeteo() {
     city: city.name,
     now: {
       temp: Math.round(now.temperature_2m),
-      wea: wmoText(now.weather_code),
-      precip: Math.max(now.precipitation || 0, (d.hourly.precipitation && d.hourly.precipitation[nowIdx >= 0 ? nowIdx : 0]) || 0),
+      wea: nowWea,
+      precip: nowPrecip,
       wd: windDir(now.wind_direction_10m),
       ws: Math.round(now.wind_speed_10m) + 'km/h',
       sd: Math.round(now.relative_humidity_2m) + '%',
