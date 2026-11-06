@@ -346,39 +346,132 @@ pivot.add(car(2.6, 3.85, Math.PI * 0.5));
 pivot.add(car(-1.2, 3.85, Math.PI * 0.5));
 pivot.add(car(3.85, -2.4, 0));
 
+
+/* ---------- 花草 ---------- */
+const grassMat = new THREE.MeshStandardMaterial({ color: 0x2f6b48, roughness: 0.95 });
+const grassMat2 = new THREE.MeshStandardMaterial({ color: 0x3f7d52, roughness: 0.95 });
+const flowerMats = [0xe86a8a, 0xf0b45a, 0xd9a7ff, 0xfff2b0].map(c =>
+  new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.25, roughness: 0.7 }));
+const soilMat = new THREE.MeshStandardMaterial({ color: 0x2a2118, roughness: 0.98 });
+
+function grassTuft(x, z, s) {
+  const g = new THREE.Group();
+  for (let i = 0; i < 3; i++) {
+    const blade = new THREE.Mesh(new THREE.ConeGeometry(0.05 * s, 0.22 * s, 4), i % 2 ? grassMat2 : grassMat);
+    blade.position.set((Math.random() - 0.5) * 0.16 * s, 0.1 * s, (Math.random() - 0.5) * 0.16 * s);
+    blade.rotation.z = (Math.random() - 0.5) * 0.5;
+    blade.castShadow = true;
+    g.add(blade);
+  }
+  g.position.set(x, 0.2, z);
+  return g;
+}
+
+function flowerBed(x, z, w, d) {
+  const g = new THREE.Group();
+  const soil = new THREE.Mesh(new THREE.BoxGeometry(w, 0.08, d), soilMat);
+  soil.position.y = 0.04;
+  soil.receiveShadow = true;
+  g.add(soil);
+  const n = Math.round(w * d * 26);
+  for (let i = 0; i < n; i++) {
+    const fx2 = (Math.random() - 0.5) * (w - 0.1);
+    const fz = (Math.random() - 0.5) * (d - 0.1);
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.12, 3), grassMat2);
+    stem.position.set(fx2, 0.12, fz);
+    g.add(stem);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.028, 6, 5), flowerMats[i % flowerMats.length]);
+    head.position.set(fx2, 0.19, fz);
+    g.add(head);
+  }
+  g.position.set(x, 0.2, z);
+  return g;
+}
+
+function bush(x, z, s) {
+  const g = new THREE.Group();
+  for (let i = 0; i < 3; i++) {
+    const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.2 * s, 0), i % 2 ? grassMat : grassMat2);
+    b.position.set((Math.random() - 0.5) * 0.26 * s, 0.16 * s + Math.random() * 0.08, (Math.random() - 0.5) * 0.26 * s);
+    b.castShadow = true;
+    g.add(b);
+  }
+  g.position.set(x, 0.2, z);
+  return g;
+}
+
+[[-3.1, 2.2], [3.1, -2.2], [-2.4, -3.2], [2.4, 2.9]].forEach(([x, z]) => pivot.add(flowerBed(x, z, 1.5, 0.55)));
+[[-4.2, -1.2], [-4.0, 0.4], [1.6, -4.2], [3.4, -1.0]].forEach(([x, z], i) => pivot.add(bush(x, z, 0.9 + (i % 2) * 0.3)));
+for (let i = 0; i < 16; i++) {
+  const a = (i / 16) * Math.PI * 2;
+  const r = 4.4 + (i % 3) * 0.2;
+  pivot.add(grassTuft(Math.cos(a) * r, Math.sin(a) * r, 0.8 + (i % 4) * 0.12));
+}
+
 /* ---------- 行人 ---------- */
 const SKIN = [0xe8c4a2, 0xd9b08c, 0xf0d3b8, 0xc99a72];
 const people = [];
 
 function buildPerson(seed) {
   const g = new THREE.Group();
-  const coatMat = new THREE.MeshStandardMaterial({ color: 0x3a4a6b, roughness: 0.92 });
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.085, 0.24, 4, 8), coatMat);
-  body.position.y = 0.42;
-  body.castShadow = true;
-  g.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 10), new THREE.MeshStandardMaterial({ color: SKIN[seed % SKIN.length], roughness: 0.85 }));
-  head.position.y = 0.63;
+  const palette = [0x2f4468, 0x5a4632, 0x6b3f4a, 0x3c5548, 0x8a7f6a, 0x394b63];
+  const coatMat = new THREE.MeshStandardMaterial({ color: palette[seed % palette.length], roughness: 0.9 });
+  const pantsMat = new THREE.MeshStandardMaterial({ color: 0x232a36, roughness: 0.95 });
+  const skinMat = new THREE.MeshStandardMaterial({ color: SKIN[seed % SKIN.length], roughness: 0.85 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: seed % 3 === 0 ? 0x33241c : 0x14100e, roughness: 0.9 });
+
+  // 躯干（上宽下窄）
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.082, 0.2, 4, 10), coatMat);
+  torso.position.y = 0.46;
+  torso.castShadow = true;
+  g.add(torso);
+
+  // 头 + 头发
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.072, 14, 12), skinMat);
+  head.position.y = 0.66;
   head.castShadow = true;
   g.add(head);
-  const legMat = new THREE.MeshStandardMaterial({ color: 0x1b2230, roughness: 0.95 });
-  [-0.04, 0.04].forEach((dx) => {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.2, 0.055), legMat);
-    leg.position.set(dx, 0.16, 0);
-    g.add(leg);
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.076, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat);
+  hair.position.y = 0.672;
+  g.add(hair);
+
+  // 手臂
+  const arms = [-1, 1].map(sx => {
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.025, 0.16, 3, 6), coatMat);
+    arm.position.set(sx * 0.105, 0.45, 0);
+    arm.rotation.z = sx * 0.12;
+    arm.castShadow = true;
+    g.add(arm);
+    return arm;
   });
+
+  // 腿（可摆动）
+  const legs = [-1, 1].map(sx => {
+    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.03, 0.18, 3, 6), pantsMat);
+    leg.position.set(sx * 0.042, 0.19, 0);
+    leg.castShadow = true;
+    g.add(leg);
+    return leg;
+  });
+
   // 伞
   const umbrella = new THREE.Group();
-  const canopy = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.13, 10), new THREE.MeshStandardMaterial({ color: 0x2f6fb0, roughness: 0.6, metalness: 0.2 }));
-  canopy.position.y = 0.86;
+  const canopy = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.14, 12), new THREE.MeshStandardMaterial({ color: seed % 2 ? 0x2f6fb0 : 0x3f7f63, roughness: 0.55, metalness: 0.25 }));
+  canopy.position.y = 0.88;
   canopy.castShadow = true;
   umbrella.add(canopy);
-  const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.5, 5), new THREE.MeshStandardMaterial({ color: 0x9aa7b6 }));
-  stick.position.y = 0.62;
+  const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.5, 5), new THREE.MeshStandardMaterial({ color: 0x9aa7b6 }));
+  stick.position.y = 0.63;
   umbrella.add(stick);
   umbrella.visible = false;
   g.add(umbrella);
-  g.userData = { coatMat, umbrella, phase: Math.random() * Math.PI * 2, speed: 0.12 + Math.random() * 0.1, axis: seed % 2 };
+
+  g.userData = {
+    coatMat, umbrella, arms, legs,
+    phase: Math.random() * Math.PI * 2,
+    speed: 0.1 + Math.random() * 0.1,
+    axis: seed % 2
+  };
   return g;
 }
 
@@ -889,6 +982,7 @@ scene.add(mist);
 /* ---------------- 天气状态 ---------------- */
 let hourNow = 12;
 let currentTemp = 18;
+let currentPrecip = 0;
 
 const W = {
   mode: 'clear',
@@ -909,9 +1003,10 @@ const PALETTES = {
   haze:    { day: ['#7a7566', '#cfc6b2'], night: ['#0d0f12', '#242321'], glowDay: '#e6d7b8', glowNight: '#9a8f7a' }
 };
 
-function modeFromText(wea, code) {
+function modeFromText(wea, code, precip) {
   const s = (wea || '') + ' ' + (code || '');
   if (/雷/.test(s)) return 'thunder';
+  if (precip > 0.15 && /雪/.test(s) === false) return 'rain';
   if (/雪/.test(s)) return 'snow';
   if (/雨/.test(s)) return 'rain';
   if (/雾|霾|沙|尘/.test(s)) return /霾|沙|尘/.test(s) ? 'haze' : 'fog';
@@ -921,7 +1016,12 @@ function modeFromText(wea, code) {
 }
 
 function applyWeather(w) {
-  const mode = w.mode;
+  let mode = w.mode;
+  const p = (typeof w.precip === 'number' ? w.precip : currentPrecip) || 0;
+  if (mode === 'clear' || mode === 'cloudy') {
+    if (p > 0.15) mode = /雪/.test(w.wea || '') ? 'snow' : 'rain';
+  }
+  currentPrecip = p;
   const night = 1 - dayFactor(hourNow);
   const pal = PALETTES[mode === 'thunder' ? 'rain' : mode] || PALETTES.clear;
   const pair = night > 0.55 ? pal.night : pal.day;
@@ -983,6 +1083,12 @@ function applyWeather(w) {
     per.userData.coatMat.color.setHex(coatColor);
     per.userData.umbrella.visible = withUmbrella;
   });
+
+  // 全屏天气层
+  fx.mode = mode;
+  fx.night = night;
+  fx.intensity = rainy ? Math.min(1, 0.35 + p / 6) : snowy ? Math.min(1, 0.35 + p / 3) : 0;
+  fxSeed();
 
   // 夜灯
   const lampOn = night > 0.35 || mode === 'overcast' || rainy || mode === 'fog';
@@ -1047,6 +1153,131 @@ canvas.addEventListener('pointermove', e => {
 });
 canvas.addEventListener('pointerup', e => { dragging = false; try { canvas.releasePointerCapture(e.pointerId); } catch (_) {} });
 canvas.addEventListener('pointercancel', () => { dragging = false; });
+
+
+/* ---------------- 全屏天气层（雨 / 雪 / 晴 / 雾） ---------------- */
+const fxCanvas = document.getElementById('wxfx');
+const fxCtx = fxCanvas ? fxCanvas.getContext('2d') : null;
+const fx = { mode: 'clear', intensity: 0, night: 0, drops: [], flakes: [], t: 0, flash: 0 };
+
+function fxResize() {
+  if (!fxCanvas) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  fxCanvas.width = Math.round(canvas.clientWidth * dpr);
+  fxCanvas.height = Math.round(canvas.clientHeight * dpr);
+  fx.dpr = dpr;
+}
+window.addEventListener('resize', fxResize);
+
+function fxSeed() {
+  const w = fxCanvas ? fxCanvas.width : 0, h = fxCanvas ? fxCanvas.height : 0;
+  fx.drops = [];
+  fx.flakes = [];
+  const n = Math.round(120 + 260 * fx.intensity);
+  for (let i = 0; i < n; i++) {
+    fx.drops.push({ x: Math.random() * w, y: Math.random() * h, l: 12 + Math.random() * 26 * (0.5 + fx.intensity), v: 600 + Math.random() * 700 });
+  }
+  const m = Math.round(80 + 220 * fx.intensity);
+  for (let i = 0; i < m; i++) {
+    fx.flakes.push({ x: Math.random() * w, y: Math.random() * h, r: 1 + Math.random() * 2.4, v: 30 + Math.random() * 60, p: Math.random() * 9 });
+  }
+}
+
+function fxUpdate(dt) {
+  if (!fxCanvas || !fxCtx) return;
+  if (fxCanvas.width !== Math.round(canvas.clientWidth * (fx.dpr || 1))) fxResize();
+  const w = fxCanvas.width, h = fxCanvas.height;
+  const ctx = fxCtx;
+  ctx.clearRect(0, 0, w, h);
+  fx.t += dt;
+
+  // 晴：太阳光晕
+  if (fx.mode === 'clear' || fx.mode === 'cloudy') {
+    const day = 1 - fx.night;
+    if (day > 0.15) {
+      const sx = w * 0.82, sy = h * 0.12, R = Math.min(w, h) * 0.42;
+      const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, R);
+      g.addColorStop(0, 'rgba(255,240,200,' + (0.55 * day) + ')');
+      g.addColorStop(0.25, 'rgba(255,215,150,' + (0.16 * day) + ')');
+      g.addColorStop(1, 'rgba(255,200,120,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+      // 光束
+      ctx.save();
+      ctx.translate(sx, sy);
+      for (let i = 0; i < 6; i++) {
+        ctx.rotate(Math.PI / 3 + Math.sin(fx.t * 0.05 + i) * 0.03);
+        const lg = ctx.createLinearGradient(0, 0, R * 1.1, 0);
+        lg.addColorStop(0, 'rgba(255,235,190,' + (0.10 * day) + ')');
+        lg.addColorStop(1, 'rgba(255,235,190,0)');
+        ctx.fillStyle = lg;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(R * 1.1, -R * 0.06);
+        ctx.lineTo(R * 1.1, R * 0.06);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    } else {
+      const g = ctx.createRadialGradient(w * 0.8, h * 0.14, 0, w * 0.8, h * 0.14, Math.min(w, h) * 0.3);
+      g.addColorStop(0, 'rgba(190,220,255,0.18)');
+      g.addColorStop(1, 'rgba(190,220,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    }
+  }
+
+  // 雨
+  if (fx.mode === 'rain' || fx.mode === 'thunder' || fx.mode === 'snow') {
+    if ((fx.mode === 'rain' || fx.mode === 'thunder') && fx.drops.length) {
+      ctx.lineCap = 'round';
+      for (const d of fx.drops) {
+        d.y += d.v * dt * (0.6 + fx.intensity * 0.8);
+        d.x += d.v * dt * 0.12;
+        if (d.y > h) { d.y = -20; d.x = Math.random() * w; }
+        if (d.x > w) d.x = 0;
+        ctx.strokeStyle = 'rgba(190,225,255,' + (0.14 + 0.3 * fx.intensity) + ')';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x - d.l * 0.18, d.y - d.l);
+        ctx.stroke();
+      }
+    }
+    if (fx.mode === 'snow' && fx.flakes.length) {
+      for (const f of fx.flakes) {
+        f.y += f.v * dt * (0.5 + fx.intensity);
+        f.x += Math.sin(fx.t * 0.8 + f.p) * 12 * dt;
+        if (f.y > h) { f.y = -10; f.x = Math.random() * w; }
+        ctx.fillStyle = 'rgba(240,248,255,' + (0.35 + 0.35 * fx.intensity) + ')';
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // 底部水汽
+    const g = ctx.createLinearGradient(0, h * 0.72, 0, h);
+    g.addColorStop(0, 'rgba(150,190,240,0)');
+    g.addColorStop(1, 'rgba(150,190,240,' + (0.06 + 0.10 * fx.intensity) + ')');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, h * 0.72, w, h * 0.28);
+  }
+
+  // 雾
+  if (fx.mode === 'fog' || fx.mode === 'haze') {
+    for (let i = 0; i < 3; i++) {
+      const y = h * (0.45 + i * 0.16);
+      const g = ctx.createLinearGradient(0, y - 60, 0, y + 60);
+      g.addColorStop(0, 'rgba(210,225,240,0)');
+      g.addColorStop(0.5, 'rgba(210,225,240,0.10)');
+      g.addColorStop(1, 'rgba(210,225,240,0)');
+      ctx.fillStyle = g;
+      const off = Math.sin(fx.t * 0.2 + i) * 40;
+      ctx.fillRect(off - 40, y - 60, w + 80, 120);
+    }
+  }
+}
 
 /* ---------------- 渲染循环 ---------------- */
 const clock = new THREE.Clock();
@@ -1126,7 +1357,18 @@ function animate() {
       if (per.position.x > 4.9) per.position.x = -4.9;
       per.rotation.y = Math.PI / 2;
     }
-    per.position.y = 0.2 + Math.abs(Math.sin(t * 4 + u.phase)) * 0.02;
+    per.position.y = 0.2 + Math.abs(Math.sin(t * 4.5 + u.phase)) * 0.018;
+    const swing = Math.sin(t * 4.5 + u.phase) * 0.5;
+    if (u.legs) {
+      u.legs[0].rotation.x = swing * 0.8;
+      u.legs[1].rotation.x = -swing * 0.8;
+      u.legs[0].position.z = Math.sin(swing) * 0.04;
+      u.legs[1].position.z = -Math.sin(swing) * 0.04;
+    }
+    if (u.arms) {
+      u.arms[0].rotation.x = -swing * 0.7;
+      u.arms[1].rotation.x = swing * 0.7;
+    }
   });
 
   // 摩天轮转动
@@ -1150,6 +1392,8 @@ function animate() {
   } else {
     skyUniforms.uFlash.value = 0;
   }
+
+  fxUpdate(dt);
 
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
@@ -1330,8 +1574,8 @@ function windDir(deg) {
 
 async function fetchOpenMeteo() {
   const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + city.lat + '&longitude=' + city.lng +
-    '&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure' +
-    '&hourly=temperature_2m,weather_code' +
+    '&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure,precipitation' +
+    '&hourly=temperature_2m,weather_code,precipitation' +
     '&daily=weather_code,temperature_2m_max,temperature_2m_min' +
     '&timezone=Asia%2FShanghai&forecast_days=8';
   const r = await fetch(u);
@@ -1363,6 +1607,7 @@ async function fetchOpenMeteo() {
     now: {
       temp: Math.round(now.temperature_2m),
       wea: wmoText(now.weather_code),
+      precip: now.precipitation || 0,
       wd: windDir(now.wind_direction_10m),
       ws: Math.round(now.wind_speed_10m) + 'km/h',
       sd: Math.round(now.relative_humidity_2m) + '%',
@@ -1395,8 +1640,10 @@ async function load() {
   if (data) {
     try {
     currentWeather = {
-      mode: FORCE_WX || modeFromText(data.now.wea, data.now.code),
-      thunder: /雷/.test(data.now.wea || '')
+      mode: FORCE_WX || modeFromText(data.now.wea, data.now.code, data.now.precip),
+      thunder: /雷/.test(data.now.wea || ''),
+      precip: typeof data.now.precip === 'number' ? data.now.precip : 0,
+      wea: data.now.wea || ''
     };
     // 用当前天气初始化
     applyWeather(currentWeather);
@@ -1428,6 +1675,8 @@ async function load() {
   setTimeout(() => el('loading').remove(), 800);
 }
 
+fxResize();
+fxSeed();
 animate();
 tickClock();
 setInterval(tickClock, 1000);
