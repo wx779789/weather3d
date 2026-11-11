@@ -1,19 +1,27 @@
 # 访问地址（代码块右上角可一键复制）
 
-**线上网页** —— 手机、电脑浏览器直接打开：
+**线上网页（主）** —— GitHub Pages，推送 `main` 后自动构建：
+
+```
+https://wx779789.github.io/weather3d/
+```
+
+**线上网页（备用）** —— 走本机 `server.js`，带中国天气网真实数据，需本机开机：
 
 ```
 https://renmai-planner.app.workbuddy.host/?sharecode=VWDFLQREDJ
 ```
 
-**本仓库** —— 私有仓库，需登录 wx779789 账号：
+**本仓库** —— 已转为公开仓库：
 
 ```
 https://github.com/wx779789/weather3d
 ```
 
 > `?sharecode=VWDFLQREDJ` 必须一起复制，只填域名会提示「链接不完整」。
-> 仓库代码更新后线上网页不会自动变化，需要重新发布 `dist/`。
+> Pages 是纯静态托管，没有 Node 后端，数据由前端直连 Open-Meteo；要中国天气网口径的实时数据请用备用链接。
+> 代码改完后运行 `python tools/gh_sync.py -m "说明"`，它会同步 `dist/` 并触发 Pages 重新构建。
+> 本机 `github.com` 不可达，**不要用 `git push`**。详见 `docs/deployment.md`。
 
 ---
 
@@ -35,7 +43,7 @@ PORT=9000 node server.js
 | 页面 | 文件 | 说明 |
 |---|---|---|
 | 封面 | `public/index.html` | 标题「天气视界」+ 说明 + 镜面高光按钮（WebGL 着色器，移植自 `按钮.txt`）|
-| 选城市 | `public/select.html` | 柔性弯曲卡片轮播（着色器移植自 `新建文本文档 (2).txt`），15 座城市，卡片插画为各地标 |
+| 选城市 | `public/select.html` | 柔性弯曲卡片轮播（着色器移植自 `新建文本文档 (2).txt`），18 座城市，卡片插画为各地标 |
 | 主场景 | `public/scene.html?city=beijing` | 等距 3D 微缩模型 + 天气效果 + 天气面板 |
 
 ## 数据来源
@@ -67,12 +75,28 @@ PORT=9000 node server.js
 ```
 weather3d/
 ├─ server.js               # 静态服务 + 天气代理
-└─ public/
-   ├─ index.html select.html scene.html
-   ├─ css/{base,cover,select,scene}.css
-   └─ js/{cities,cardart,cover,select,scene}.js
-      └─ vendor/three.module.js
+├─ public/                 # 唯一源码目录
+│  ├─ index.html select.html scene.html
+│  ├─ css/{base,cover,select,scene}.css
+│  └─ js/{cities,cardart,cover,select,scene}.js
+│     └─ vendor/three.module.js
+├─ dist/                   # public/ 的镜像，Pages 发布源（勿手改）
+├─ docs/                   # 项目知识库，从 docs/index.md 读起
+└─ tools/gh_sync.py        # 经 GitHub API 提交（替代 git push）
 ```
+
+## 项目知识库
+
+`docs/` 是随代码一起维护的知识库，每次改动必须同步更新：
+
+| 文档 | 内容 |
+|---|---|
+| `docs/index.md` | 索引与当前状态 |
+| `docs/architecture.md` | 三层页面结构与 3D 渲染管线 |
+| `docs/data-pipeline.md` | 天气数据三级降级链路 |
+| `docs/deployment.md` | 提交与双通道发布，含网络限制说明 |
+| `docs/conventions.md` | 每次创作的固定动作与禁止事项 |
+| `docs/CHANGELOG.md` | 变更日志 |
 
 ## 公网链接（临时）
 
