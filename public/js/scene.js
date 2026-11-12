@@ -1,6 +1,7 @@
 import * as THREE from './vendor/three.module.js';
 import { createLandmark } from './landmarks.js';
 import { createVoxelLandmark } from './voxel-landmarks.js';
+import { createVoxelBlock } from './voxel-blocks.js';
 
 /* =========================================================
    天气视界 · 3D 城市场景
@@ -11,8 +12,19 @@ const cityId = params.get('city') || 'beijing';
 const city = window.cityById(cityId);
 const FORCE_WX = params.get('wx');
 const FORCE_HOUR = params.get('hour') ? parseFloat(params.get('hour')) : null;
-/* 模型体系：voxel（体素方块，默认）/ classic（低多边形写实） */
-const MODEL_SET = (params.get('models') || 'voxel').toLowerCase() === 'classic' ? 'classic' : 'voxel';
+/* 模型体系：
+   · block    ── 整块微缩街区（默认），城市地标落在街区东侧楼位
+   · voxel    ── 单座体素地标
+   · classic  ── 低多边形写实地标 */
+const MODEL_RAW = (params.get('models') || 'block').toLowerCase();
+const MODEL_SET = MODEL_RAW === 'classic' ? 'classic' : (MODEL_RAW === 'voxel' ? 'voxel' : 'block');
+
+/* 街区模型自带完整的光影设计（原先在 key 1.2 / hemi 0.3 / 无色调映射下渲染）。
+   站点为了"发光沙盘感"把光推到 sun 3.2 + hemi 1.45 + exposure 1.46，
+   直接套上去会整片过曝成雪白，所以街区模式把光照拉回同一量级。 */
+const BLOCK_LIGHT = MODEL_SET === 'block';
+const LIGHT_K = BLOCK_LIGHT ? 0.38 : 1;
+const EXP_K = BLOCK_LIGHT ? 0.72 : 1;
 const ACCENT = new THREE.Color(city.accent || '#7fe3ff');
 
 const canvas = document.getElementById('gl');
@@ -67,7 +79,9 @@ function applyCamera() {
   if (!camera) return;
   const w = canvas.clientWidth, h = canvas.clientHeight;
   const aspect = w / h;
-  const base = Math.max(h < 760 ? 17.8 : FRUSTUM, 13.6 / Math.max(aspect, 0.35));
+  /* 街区模式：整块街区比单座地标宽而扁，视锥收窄一点才撑得住画面 */
+  const base = Math.max(h < 760 ? 17.8 : FRUSTUM, 13.6 / Math.max(aspect, 0.35))
+             * (BLOCK_LIGHT ? 0.84 : 1);
   const fy = base / cam.zoom;
   camera.left = -fy * aspect / 2;
   camera.right = fy * aspect / 2;
@@ -75,8 +89,10 @@ function applyCamera() {
   camera.bottom = -fy / 2;
   camera.updateProjectionMatrix();
   const p = cam.pitch;
-  camera.position.set(Math.cos(p) * cam.dist, Math.sin(p) * cam.dist, Math.cos(p) * cam.dist);
-  camera.lookAt(0, 1.85, 0);
+  /* 街区模式：右侧是天气面板，整块模型左移，避免地标被面板压住 */
+  const offX = BLOCK_LIGHT ? 4.5 : 0;
+  camera.position.set(Math.cos(p) * cam.dist + offX, Math.sin(p) * cam.dist, Math.cos(p) * cam.dist);
+  camera.lookAt(offX, 1.85, 0);
 }
 function makeCamera() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -251,24 +267,27 @@ function buildBase() {
   const b1 = box(11.6, 0.16, 11.6, MAT.stoneDark, 0, -1.12, 0, base);
   const b2 = box(11.1, 0.9, 11.1, MAT.stone, 0, -0.62, 0, base);
   const top = box(10.5, 0.3, 10.5, MAT.pave, 0, -0.02, 0, base);
+  top.userData.blockHide = true;      // 街区模式：铺装由街区自带底板接管
   const plaza = box(6.5, 0.32, 6.5, MAT.plaza, 0, 0.06, 0, base);
-  plaza.userData.sandboxOnly = true;   // 第一人称改由连续地面接管，不再有"摆在路中间的白色台子"
+  plaza.userData.sandboxOnly = true;
+  plaza.userData.blockHide = true;   // 第一人称改由连续地面接管，不再有"摆在路中间的白色台子"
 
-  // 道路
-  box(10.5, 0.26, 1.8, MAT.road, 0, 0.05, 3.85, base);
-  box(1.8, 0.26, 10.5, MAT.road, 3.85, 0.05, 0, base).position.y = 0.05;
-  box(1.8, 0.26, 10.5, MAT.road, -3.85, 0.05, 0, base);
-
-  // 车道虚线
+  // 道路 / 虚线 / 斑马线：街区模式下一律让位给街区自带的街道
+  const roadParts = [
+    box(10.5, 0.26, 1.8, MAT.road, 0, 0.05, 3.85, base),
+    box(1.8, 0.26, 10.5, MAT.road, 3.85, 0.05, 0, base),
+    box(1.8, 0.26, 10.5, MAT.road, -3.85, 0.05, 0, base)
+  ];
+  roadParts[1].position.y = 0.05;
   for (let i = -4; i <= 4; i++) {
-    box(0.5, 0.03, 0.1, MAT.line, i * 0.9, 0.19, 3.85, base);
-    box(0.1, 0.03, 0.5, MAT.line, 3.85, 0.19, i * 0.9, base);
-    box(0.1, 0.03, 0.5, MAT.line, -3.85, 0.19, i * 0.9, base);
+    roadParts.push(box(0.5, 0.03, 0.1, MAT.line, i * 0.9, 0.19, 3.85, base));
+    roadParts.push(box(0.1, 0.03, 0.5, MAT.line, 3.85, 0.19, i * 0.9, base));
+    roadParts.push(box(0.1, 0.03, 0.5, MAT.line, -3.85, 0.19, i * 0.9, base));
   }
-  // 斑马线
   for (let i = 0; i < 6; i++) {
-    box(0.22, 0.03, 1.5, MAT.line, 2.4 + i * 0.34, 0.19, 3.85, base);
+    roadParts.push(box(0.22, 0.03, 1.5, MAT.line, 2.4 + i * 0.34, 0.19, 3.85, base));
   }
+  roadParts.forEach(function (m) { m.userData.blockHide = true; });
 
   // 地面辉光（湿滑反光）
   const glowGeo = new THREE.PlaneGeometry(10.4, 10.4);
@@ -695,10 +714,35 @@ const landmark = MODEL_SET === 'classic'
       MAT,
       PAL: { gold, roofRed, wallRed, whiteWall, woodDark, brick, greenDome }
     })
-  : createVoxelLandmark({ city });
-landmark.position.set(0, 0.2, 0);
-landmark.scale.setScalar(LANDMARK_SCALE);
+  : MODEL_SET === 'voxel'
+    ? createVoxelLandmark({ city })
+    : createVoxelBlock({ city });
+
+/* 街区模式：底面坐进石台的顶面，外层按模型自身比例，不再叠加 LANDMARK_SCALE */
+const BLOCK_MODE = MODEL_SET === 'block';
+const LM_SCALE = BLOCK_MODE ? 1 : LANDMARK_SCALE;
+landmark.position.set(0, BLOCK_MODE ? -0.17 : 0.2, 0);
+landmark.scale.setScalar(LM_SCALE);
 pivot.add(landmark);
+
+/* 街区模式：底座自带的铺装、行人、路灯、绿化全部让位，避免与街区重复。
+   岩层与青色描边（sandboxOnly）保留，沙盘还要靠它们"落地"。 */
+const blockHidden = [];
+if (BLOCK_MODE) {
+  /* 街区是 11.6×8.5 的长方形，底座是 11.1 见方——把底座在 Z 向收一收，
+     刚好托住街区，不露出多余的一圈深色石板 */
+  base.scale.z = 0.80;
+  pivot.children.forEach(function (o) {
+    if (o === base || o === landmark) return;
+    if (o.userData.blockHide) { o.visible = false; blockHidden.push(o); return; }
+    if (o.userData.sandboxOnly) return;
+    o.visible = false;
+  });
+  for (let i = 0; i < base.children.length; i++) {
+    const c = base.children[i];
+    if (c.userData.blockHide) { c.visible = false; blockHidden.push(c); }
+  }
+}
 
 /* ---------------- 天气特效 ---------------- */
 const rainGroup = new THREE.Group();
@@ -830,11 +874,14 @@ function applyWeather(w) {
 
   updateEnv(top, bottom);
 
-  renderer.toneMappingExposure = night > 0.55 ? 1.22 : (mode === 'clear' ? 1.46 : 1.3);
-  hemi.intensity = night > 0.55 ? 0.85 : (mode === 'clear' ? 1.45 : 1.25);
-  sun.intensity = night > 0.55 ? 0.35 : ({ clear: 3.2, cloudy: 1.5, overcast: 1.0, rain: 0.8, snow: 1.6, fog: 1.1, haze: 1.2 }[mode] || 2.0);
+  /* 夜里主要靠环境光撑亮，压得太狠整块沙盘会糊成黑块，所以系数放宽一倍 */
+  const LK = night > 0.55 ? LIGHT_K * 2.0 : LIGHT_K;
+  const EK = night > 0.55 ? EXP_K * 1.14 : EXP_K;
+  renderer.toneMappingExposure = (night > 0.55 ? 1.22 : (mode === 'clear' ? 1.46 : 1.3)) * EK;
+  hemi.intensity = (night > 0.55 ? 0.85 : (mode === 'clear' ? 1.45 : 1.25)) * LK;
+  sun.intensity = (night > 0.55 ? 0.35 : ({ clear: 3.2, cloudy: 1.5, overcast: 1.0, rain: 0.8, snow: 1.6, fog: 1.1, haze: 1.2 }[mode] || 2.0)) * LK;
   sun.color.set(night > 0.55 ? 0x8fb0e0 : (mode === 'clear' ? 0xfff0d0 : 0xdfe6f0));
-  fill.intensity = night > 0.55 ? 0.6 : 0.35;
+  fill.intensity = (night > 0.55 ? 0.6 : 0.35) * LK;
 
   starMat.opacity = Math.max(0, night * 1.1 - (mode === 'clear' ? 0 : 0.85));
   sunSprite.material.opacity = mode === 'overcast' || mode === 'rain' ? 0.0 : (mode === 'clear' ? 1 : 0.35);
@@ -892,6 +939,17 @@ function applyWeather(w) {
   lamps.forEach(l => { l.userData.light.intensity = lampOn ? 6 : 0; });
   MAT.warm.emissiveIntensity = lampOn ? 2.6 : 0.6;
   base.userData.glow.opacity = rainy ? 0.12 : 0.05;
+
+  // 街区：入夜点亮玻璃幕墙与路灯
+  if (landmark && landmark.userData.voxelBlock) {
+    const vb = landmark.userData.voxelBlock;
+    if (vb.glass && vb.glass.material) {
+      vb.glass.material.emissiveIntensity = lampOn ? 0.55 : 0.05;
+    }
+    if (vb.lit) {
+      for (let i = 0; i < vb.lit.length; i++) vb.lit[i].emissiveIntensity = lampOn ? 0.85 : 0;
+    }
+  }
 
   // 体素地标：入夜点亮窗带与玻璃幕墙（voxel-landmarks.js 暴露的材质列表）
   if (landmark && landmark.userData.voxelLit) {
@@ -1273,6 +1331,8 @@ function animate() {
 
   // 摩天轮转动
   if (landmark.userData.wheel) landmark.userData.wheel.rotation.z += dt * 0.12;
+  // 街区自带动态：摩天轮吊舱 / 巴士 / 车辆
+  if (landmark.userData.update) landmark.userData.update(dt);
 
   // 闪电
   if (W.thunder) {
@@ -1796,7 +1856,7 @@ function enterFP() {
   updateFpProjection();
 
   // 微微收小地标 + 更强的大气透视：留出街道空间，避免"贴脸模型"感
-  if (landmark) landmark.scale.setScalar(0.98);
+  if (landmark) landmark.scale.setScalar(BLOCK_MODE ? 1 : 0.98);
   fpSavedExposure = renderer.toneMappingExposure;
   renderer.toneMappingExposure = Math.min(fpSavedExposure, 1.08);
   // 沙盘为了"发光模型感"用了很强的补光，人眼视角下会过曝成一片白，这里收回到自然日光
@@ -1834,7 +1894,8 @@ function exitFP() {
   fpGround.visible = false;
   fpBackdrop.visible = false;
   fpSandboxOnly.forEach(function (o) { o.visible = true; });
-  if (landmark) landmark.scale.setScalar(1.32);
+  blockHidden.forEach(function (o) { o.visible = false; });
+  if (landmark) landmark.scale.setScalar(BLOCK_MODE ? 1 : 1.32);
   renderer.toneMappingExposure = fpSavedExposure;
   sun.intensity = fpSunSaved; hemi.intensity = fpHemiSaved; fill.intensity = fpFillSaved;
   scene.fog.density = currentBaseFog;

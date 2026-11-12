@@ -3,8 +3,9 @@
 > 覆盖 18 座城市的地标 3D 模型。本文按「通用构件 → 材质 → 分派 → 逐城拆解 → 调参速查」组织。
 > 代码位置以 `landmarks.js` 行号为准（2026-11-12 版，共 1210 行）。
 >
-> **⚠️ 2026-11-12 起默认模型改为体素版**（`voxel-landmarks.js`），本文描述的低多边形写实版改为备选，
-> 通过 `scene.html?city=xx&models=classic` 启用。体素体系的差异见文末 [§十](#十体素模型体系voxel-landmarksjs)。
+> **⚠️ 2026-11-12 起站点默认渲染整块「微缩街区」**（`voxel-blocks.js`），本文描述的低多边形写实版是备选，
+> 通过 `scene.html?city=xx&models=classic` 启用（单座体素地标用 `?models=voxel`）。
+> 体素体系的差异见文末 [§十](#十体素模型体系voxel-landmarksjs)；街区版的「光照与构图适配」见 `docs/CHANGELOG.md` 同日条目。
 
 ---
 
