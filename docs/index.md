@@ -6,7 +6,9 @@
 
 | 文档 | 内容 | 何时需要读 |
 |---|---|---|
+| [handoff.md](handoff.md) | **交接文档**：项目定位、代码地图、建模规范、当前进度、待办、验收方法 | 换人/换 AI 接手时**先读这份** |
 | [architecture.md](architecture.md) | 三层页面结构、JS 模块职责、渲染管线 | 改任何前端逻辑前 |
+| [landmarks.md](landmarks.md) | **地标建模文档**：14 个通用构件、材质表、18 城分派、逐城拆解、调参速查 | 改 3D 模型、加城市前 |
 | [data-pipeline.md](data-pipeline.md) | 天气数据三级链路：本地代理 → Open-Meteo → 演示数据 | 改数据源、接口、面板字段前 |
 | [deployment.md](deployment.md) | 双通道发布：GitHub Pages 与 WorkBuddy 托管 | 发布、排查线上问题时 |
 | [conventions.md](conventions.md) | 创作流程约定、`public/` 与 `dist/` 同步纪律 | **每次动手前** |

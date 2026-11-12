@@ -1,4 +1,5 @@
 import * as THREE from './vendor/three.module.js';
+import { createLandmark } from './landmarks.js';
 
 /* =========================================================
    天气视界 · 3D 城市场景
@@ -53,15 +54,17 @@ function updateFpProjection() {
   fpCamera.updateProjectionMatrix();
 }
 
-const FRUSTUM = 14.2;
+const FRUSTUM = 15.6;
+/* 地标整体放大系数：与人车比例拉开，强化建筑的体量压迫感 */
+const LANDMARK_SCALE = 1.58;
 let camera = null;
-const cam = { zoom: 1, pitch: 0.72, dist: 42 };
+const cam = { zoom: 1, pitch: 0.62, dist: 42 };
 function applyCamera() {
   if (fpMode) { updateFpProjection(); return; }
   if (!camera) return;
   const w = canvas.clientWidth, h = canvas.clientHeight;
   const aspect = w / h;
-  const base = Math.max(h < 760 ? 16.5 : FRUSTUM, 12.6 / Math.max(aspect, 0.35));
+  const base = Math.max(h < 760 ? 17.8 : FRUSTUM, 13.6 / Math.max(aspect, 0.35));
   const fy = base / cam.zoom;
   camera.left = -fy * aspect / 2;
   camera.right = fy * aspect / 2;
@@ -70,7 +73,7 @@ function applyCamera() {
   camera.updateProjectionMatrix();
   const p = cam.pitch;
   camera.position.set(Math.cos(p) * cam.dist, Math.sin(p) * cam.dist, Math.cos(p) * cam.dist);
-  camera.lookAt(0, 1.2, 0);
+  camera.lookAt(0, 1.85, 0);
 }
 function makeCamera() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -181,6 +184,11 @@ scene.add(sun);
 const fill = new THREE.DirectionalLight(0x86b8ff, 0.9);
 fill.position.set(-12, 8, -10);
 scene.add(fill);
+
+/* 轮廓光：从背侧斜上方勾边，把建筑从深色背景里"剥离"出来，强化体量纵深 */
+const rim = new THREE.DirectionalLight(0xbfe0ff, 1.15);
+rim.position.set(-8, 11, -14);
+scene.add(rim);
 
 /* ---------------- 环境反射 ---------------- */
 const pmrem = new THREE.PMREMGenerator(renderer);
@@ -567,7 +575,7 @@ hedge(-4.55, -1.6, 1.4, 0.26, Math.PI / 2);
 hedge(4.55, 1.6, 1.4, 0.26, Math.PI / 2);
 
 /* 地标与树的接触阴影 */
-contactShadow(0, 0, 3.4);
+contactShadow(0, 0, 3.9);
 [[-4.4, -4.4], [-4.4, -3.6], [4.4, 4.4], [-2.9, -4.5], [4.5, -2.2]].forEach(([x, z]) => contactShadow(x, z, 0.6));
 
 /* ---------- 行人 ---------- */
@@ -673,463 +681,15 @@ function windowsPlane(w, h, cols, rows, color) {
   return new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.55, roughness: 0.6 });
 }
 
-function buildLandmark() {
-  const g = new THREE.Group();
-  const t = city.type;
+/* 地标建模已抽到 landmarks.js：18 城 / 11 种类型，含台基、檐口、柱廊、塔刹等层次 */
 
-  /* ---- 公共材质 ---- */
-  const steel = new THREE.MeshStandardMaterial({ color: 0xdae4f2, metalness: 0.9, roughness: 0.25, emissive: 0x1a2636, emissiveIntensity: 0.6 });
-  const marble = new THREE.MeshStandardMaterial({ color: 0xe7e2d4, roughness: 0.8 });
-  const tileGreen = new THREE.MeshStandardMaterial({ color: 0x2f6a52, roughness: 0.5, metalness: 0.3 });
-  const brickDark = new THREE.MeshStandardMaterial({ color: 0x5c322d, roughness: 0.92 });
-
-  /* 庑殿/攒尖屋顶：四棱台 */
-  function hipRoof(W, D, H, mat, y) {
-    const r = W / Math.SQRT2;
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.36, r, H, 4), mat);
-    m.rotation.y = Math.PI / 4;
-    m.scale.z = D / W;
-    m.position.y = y;
-    m.castShadow = true;
-    m.receiveShadow = true;
-    g.add(m);
-    return m;
-  }
-
-  /* 飞檐翘角（四角小尖） */
-  function tips(W, D, y, mat, size) {
-    const k = size || 1;
-    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz]) => {
-      const tip = new THREE.Mesh(new THREE.BoxGeometry(0.24 * k, 0.05 * k, 0.09 * k), mat);
-      tip.position.set(sx * W * 0.5, y + 0.02, sz * D * 0.5);
-      tip.rotation.y = Math.atan2(sz, sx) * 0.35;
-      tip.rotation.z = sx * 0.22;
-      tip.castShadow = true;
-      g.add(tip);
-    });
-  }
-
-  function winPanel(w, h, cols, rows, color, x, y, z, ry) {
-    const mat = windowsPlane(w, h, cols, rows, color);
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
-    m.position.set(x, y, z);
-    if (ry) m.rotation.y = ry;
-    g.add(m);
-    return m;
-  }
-
-  /* ================= 北京 · 天安门 ================= */
-  if (t === 'gate') {
-    // 白色石台基
-    box(3.9, 0.22, 1.9, marble, 0, 0.31, 0, g);
-    box(3.6, 0.16, 1.7, marble, 0, 0.5, 0, g);
-    // 红城墙
-    box(3.7, 0.72, 1.55, wallRed, 0, 0.94, 0, g);
-    box(3.8, 0.06, 1.62, gold, 0, 1.32, 0, g);
-    // 五个券门
-    for (let i = -2; i <= 2; i++) {
-      const dw = i === 0 ? 0.34 : 0.26;
-      const dh = i === 0 ? 0.5 : 0.42;
-      box(dw, dh, 0.06, MAT.stoneDark, i * 0.62, 0.72, 0.79, g);
-      box(dw + 0.04, 0.04, 0.06, marble, i * 0.62, 0.72 + dh / 2, 0.79, g);
-    }
-    // 城楼
-    box(2.9, 0.4, 1.2, wallRed, 0, 1.55, 0, g);
-    for (let i = -3; i <= 3; i++) box(0.05, 0.4, 0.05, gold, i * 0.36, 1.55, 0.6, g);
-    winPanel(2.3, 0.2, 7, 1, '#ffd9a0', 0, 1.56, 0.615);
-    // 下层屋檐
-    hipRoof(3.3, 1.7, 0.24, gold, 1.95);
-    tips(3.3, 1.7, 1.93, gold, 1.0);
-    // 上层
-    box(2.0, 0.42, 0.86, wallRed, 0, 2.22, 0, g);
-    winPanel(1.6, 0.2, 6, 1, '#ffe0b0', 0, 2.22, 0.44);
-    // 上层屋檐（攒尖）
-    hipRoof(2.45, 1.2, 0.26, gold, 2.52);
-    tips(2.45, 1.2, 2.5, gold, 0.8);
-    // 正脊与宝顶
-    box(0.85, 0.07, 0.32, gold, 0, 2.66, 0, g);
-    box(0.04, 0.16, 0.04, MAT.warm, 0, 2.76, 0, g);
-  }
-
-  /* ================= 西安大雁塔 / 杭州雷峰塔 / 武汉黄鹤楼 ================= */
-  if (t === 'pagoda') {
-    const tall = city.id === 'wuhan' || city.id === 'nanjing' ? 1.15 : 1;
-    box(2.2, 0.18, 2.2, MAT.stoneDark, 0, 0.29, 0, g);
-    box(1.9, 0.14, 1.9, marble, 0, 0.45, 0, g);
-    let y = 0.52;
-    const tiers = city.id === 'wuhan' ? 5 : 7;
-    for (let i = 0; i < tiers; i++) {
-      const k = i / tiers;
-      const w = (1.62 - k * 0.78) * tall;
-      const bh = (0.42 - k * 0.03);
-      // 塔身
-      box(w, bh, w, i % 2 ? wallRed : woodDark, 0, y + bh / 2, 0, g);
-      // 四面窗/门
-      [[0, w / 2 + 0.005, 0], [0, -w / 2 - 0.005, Math.PI], [w / 2 + 0.005, 0, Math.PI / 2], [-w / 2 - 0.005, 0, -Math.PI / 2]]
-        .forEach(([x, z, ry]) => {
-          const m = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.34, bh * 0.5), new THREE.MeshStandardMaterial({ color: 0xffcf8a, emissive: 0xffb060, emissiveIntensity: 1.2, roughness: 0.5 }));
-          m.position.set(x, y + bh / 2, z);
-          m.rotation.y = ry;
-          g.add(m);
-        });
-      // 檐
-      hipRoof(w * 1.34, w * 1.34, 0.085, i === 0 ? gold : tileGreen, y + bh + 0.04);
-      tips(w * 1.34, w * 1.34, y + bh + 0.03, gold, 0.55);
-      y += bh + 0.1;
-    }
-    // 塔刹
-    box(0.05, 0.34, 0.05, gold, 0, y + 0.2, 0, g);
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 10), MAT.warm);
-    ball.position.y = y + 0.42;
-    g.add(ball);
-  }
-
-  /* ================= 东方明珠 / 广州塔 / 天府塔 ================= */
-  if (t === 'tvTower' || t === 'tower') {
-    const variant = city.id === 'guangzhou' ? 'canton' : city.id === 'shanghai' ? 'sphere' : 'plain';
-
-    // 基座
-    const baseCyl = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.86, 0.42, 8), new THREE.MeshStandardMaterial({ color: 0x2b3c55, roughness: 0.7, metalness: 0.35 }));
-    baseCyl.position.y = 0.21;
-    baseCyl.castShadow = true;
-    g.add(baseCyl);
-
-    if (variant === 'sphere') {
-      // 三根斜撑 + 细塔身 + 三球（东方明珠）
-      for (let i = 0; i < 3; i++) {
-        const a = (i / 3) * Math.PI * 2 + 0.4;
-        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 1.25, 6), steel);
-        leg.position.set(Math.cos(a) * 0.26, 0.86, Math.sin(a) * 0.26);
-        leg.rotation.z = Math.cos(a) * 0.26;
-        leg.rotation.x = -Math.sin(a) * 0.26;
-        leg.castShadow = true;
-        g.add(leg);
-      }
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.14, 2.6, 10), steel);
-      shaft.position.y = 1.6;
-      shaft.castShadow = true;
-      g.add(shaft);
-      // 上下两个大球 + 顶端小球
-      [[1.02, 0.40], [1.72, 0.27], [2.32, 0.15]].forEach(([yy, r]) => {
-        const sp = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 18), steel);
-        sp.position.y = yy;
-        sp.castShadow = true;
-        g.add(sp);
-        const band = new THREE.Mesh(new THREE.TorusGeometry(r * 1.002, 0.012, 6, 40), MAT.warm);
-        band.position.y = yy;
-        band.rotation.x = Math.PI / 2;
-        g.add(band);
-      });
-      box(0.03, 0.5, 0.03, MAT.line, 0, 2.75, 0, g);
-    } else if (variant === 'canton') {
-      // 广州塔：扭转格构
-      const H = 3.25, base = 0.58, topR = 0.12;
-      const N = 26;
-      for (let i = 0; i < N; i++) {
-        const k = i / (N - 1);
-        const yy = 0.35 + k * H;
-        const r = base * (1 - k) + topR * k;
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.016, 4, 26), steel);
-        ring.position.y = yy;
-        ring.rotation.x = Math.PI / 2;
-        ring.rotation.z = k * 1.2;
-        g.add(ring);
-      }
-      for (let j = 0; j < 9; j++) {
-        const kind = j % 2 === 0;
-        const a = (j / 9) * Math.PI * 2;
-        const curve = new THREE.CatmullRomCurve3([
-          new THREE.Vector3(Math.cos(a) * base, 0.35, Math.sin(a) * base),
-          new THREE.Vector3(Math.cos(a + 0.35) * base * 0.72, 1.5, Math.sin(a + 0.35) * base * 0.72),
-          new THREE.Vector3(Math.cos(a + 0.75) * base * 0.42, 2.5, Math.sin(a + 0.75) * base * 0.42),
-          new THREE.Vector3(Math.cos(a + 1.1) * topR, 0.35 + H, Math.sin(a + 1.1) * topR)
-        ]);
-        const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 0.017, 4, false), kind ? steel : gold);
-        tube.castShadow = true;
-        g.add(tube);
-      }
-      const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.02, 0.55, 6), steel);
-      ant.position.y = 0.35 + H + 0.25;
-      g.add(ant);
-      const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), MAT.warm);
-      beacon.position.y = 0.35 + H + 0.52;
-      g.add(beacon);
-    } else {
-      // 天府塔：细长塔 + 观光层
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.2, 3.0, 8), steel);
-      shaft.position.y = 1.6;
-      shaft.castShadow = true;
-      g.add(shaft);
-      const deck = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.36, 0.14, 18), steel);
-      deck.position.y = 2.28;
-      deck.castShadow = true;
-      g.add(deck);
-      const deckLight = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.02, 6, 30), MAT.warm);
-      deckLight.position.y = 2.33;
-      deckLight.rotation.x = Math.PI / 2;
-      g.add(deckLight);
-      box(0.035, 0.6, 0.035, MAT.line, 0, 3.15, 0, g);
-    }
-  }
-
-  /* ================= 厦门 · 世茂双子塔 ================= */
-  if (t === 'twin') {
-    // 裙楼
-    box(2.9, 0.22, 1.7, MAT.stone, 0, 0.31, 0, g);
-    box(2.5, 0.16, 1.4, MAT.stoneDark, 0, 0.5, 0, g);
-
-    const shell = new THREE.MeshStandardMaterial({
-      color: 0xcfe2f4, metalness: 0.85, roughness: 0.18,
-      emissive: 0x8fc4ff, emissiveIntensity: 0.18, envMapIntensity: 1.6
-    });
-
-    [-1, 1].forEach((side, idx) => {
-      const x = side * 0.73;
-      // 塔身：三段收分
-      const segs = [
-        { w: 0.56, h: 1.45, y: 0.62, d: 0.42 },
-        { w: 0.5, h: 1.05, y: 2.07, d: 0.37 },
-        { w: 0.44, h: 0.7, y: 3.12, d: 0.32 }
-      ];
-      segs.forEach((sg) => {
-        const b = new THREE.Mesh(new THREE.BoxGeometry(sg.w, sg.h, sg.d), shell);
-        b.position.set(x, sg.y + sg.h / 2, 0);
-        b.castShadow = true;
-        b.receiveShadow = true;
-        g.add(b);
-      });
-      // 曲面冠顶（帆形）
-      const crown = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.5, 12, 1, false), shell);
-      crown.position.set(x, 4.02, 0);
-      crown.scale.set(0.8, 1, 0.6);
-      crown.rotation.z = side * 0.05;
-      crown.castShadow = true;
-      g.add(crown);
-      // 立面竖向线条
-      for (let i = -2; i <= 2; i++) {
-        box(0.012, 3.2, 0.012, MAT.line, x + i * 0.095, 2.0, 0.19, g);
-      }
-      // 亮窗
-      const win = windowsPlane(0.42, 3.1, 4, 22, '#dcefff');
-      const wm = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 3.1), win);
-      wm.position.set(x, 2.05, 0.2);
-      g.add(wm);
-      const wm2 = wm.clone();
-      wm2.position.z = -0.2;
-      wm2.rotation.y = Math.PI;
-      g.add(wm2);
-      // 塔顶航空灯
-      const lampTop = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), MAT.warm);
-      lampTop.position.set(x, 4.3, 0);
-      g.add(lampTop);
-    });
-
-    // 空中连廊
-    box(1.45, 0.12, 0.3, MAT.glass, 0, 2.55, 0, g);
-    box(1.45, 0.02, 0.32, MAT.line, 0, 2.63, 0, g);
-  }
-
-  /* ================= 深圳平安 / 长沙国金 ================= */
-  if (t === 'skyline') {
-    // 主塔：锥形 + 冠顶
-    const main = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.5, 2.9, 4), MAT.glass);
-    main.rotation.y = Math.PI / 4;
-    main.position.y = 1.65;
-    main.castShadow = true;
-    g.add(main);
-    // 主塔窗带
-    for (let i = 0; i < 12; i++) {
-      const w = 0.62 - i * 0.022;
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, 0.1), windowsPlane(w, 0.1, 6, 1, '#cfe6ff'));
-      m.position.set(0, 0.5 + i * 0.2, 0.42 - i * 0.012);
-      g.add(m);
-    }
-    box(0.06, 0.5, 0.06, MAT.line, 0, 3.3, 0, g);
-    // 副塔
-    const sub = [
-      { x: -1.1, w: 0.52, h: 1.5 }, { x: 1.05, w: 0.46, h: 1.2 }, { x: 1.5, w: 0.4, h: 0.9 }, { x: -1.6, w: 0.38, h: 0.8 }
-    ];
-    sub.forEach((b) => {
-      box(b.w, b.h, b.w, MAT.stone, b.x, b.h / 2 + 0.2, 0.1, g);
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(b.w * 0.8, b.h * 0.78), windowsPlane(b.w * 0.8, b.h * 0.78, 3, Math.round(b.h * 7), '#bcd9ff'));
-      m.position.set(b.x, b.h / 2 + 0.2, 0.1 + b.w / 2 + 0.005);
-      g.add(m);
-    });
-  }
-
-  /* ================= 重庆洪崖洞 ================= */
-  if (t === 'stilt') {
-    // 崖体
-    const cliff = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 2.35, 0.55, 6), MAT.stone);
-    cliff.position.y = 0.28;
-    cliff.scale.z = 0.7;
-    cliff.castShadow = true;
-    cliff.receiveShadow = true;
-    g.add(cliff);
-
-    const floors = 5;
-    let y = 0.62;
-    for (let i = 0; i < floors; i++) {
-      const w = 2.9 - i * 0.22;
-      const d = 1.1 - i * 0.06;
-      // 吊脚柱
-      for (let k = -1; k <= 1; k += 2) {
-        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.26, 5), woodDark);
-        post.position.set(k * w * 0.42, y - 0.13, d * 0.5);
-        g.add(post);
-      }
-      // 楼体
-      box(w, 0.46, d, i % 2 ? woodDark : new THREE.MeshStandardMaterial({ color: 0x7a5535, roughness: 0.85 }), 0, y + 0.23, 0, g);
-      // 檐
-      hipRoof(w * 1.1, d * 1.12, 0.07, new THREE.MeshStandardMaterial({ color: 0x2e2620, roughness: 0.9 }), y + 0.49);
-      tips(w * 1.1, d * 1.12, y + 0.47, gold, 0.5);
-      // 暖窗
-      winPanel(w * 0.86, 0.22, Math.round(w * 5), 1, '#ffce8a', 0, y + 0.23, d / 2 + 0.008);
-      y += 0.46;
-    }
-    // 顶阁
-    hipRoof(1.1, 0.7, 0.24, roofRed, y + 0.1);
-    box(0.06, 0.16, 0.06, gold, 0, y + 0.3, 0, g);
-  }
-
-  /* ================= 哈尔滨圣索菲亚 ================= */
-  if (t === 'dome') {
-    // 主殿
-    box(1.9, 1.05, 1.35, brick, 0, 0.72, 0, g);
-    // 砖缝
-    for (let i = 0; i < 6; i++) {
-      box(1.94, 0.012, 1.38, brickDark, 0, 0.4 + i * 0.16, 0, g);
-    }
-    // 主穹顶（洋葱形）
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.62, 24, 18, 0, Math.PI * 2, 0, Math.PI / 1.75), greenDome);
-    dome.position.y = 1.24;
-    dome.castShadow = true;
-    g.add(dome);
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.5, 0.14, 20), greenDome);
-    neck.position.y = 1.24;
-    g.add(neck);
-    // 十字
-    box(0.035, 0.3, 0.035, gold, 0, 1.98, 0, g);
-    box(0.16, 0.03, 0.03, gold, 0, 2.06, 0, g);
-    // 钟楼
-    const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.3, 1.1, 8), brick);
-    tower.position.set(-1.15, 0.75, 0.2);
-    tower.castShadow = true;
-    g.add(tower);
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 12, 0, Math.PI * 2, 0, Math.PI / 1.9), greenDome);
-    cap.position.set(-1.15, 1.3, 0.2);
-    g.add(cap);
-    // 侧穹顶
-    [-1, 1].forEach(sx => {
-      const small = new THREE.Mesh(new THREE.SphereGeometry(0.26, 16, 12, 0, Math.PI * 2, 0, Math.PI / 1.8), greenDome);
-      small.position.set(sx * 0.72, 1.2, 0.55);
-      g.add(small);
-    });
-    // 门
-    box(0.44, 0.6, 0.08, MAT.stoneDark, 0.35, 0.5, 0.68, g);
-    winPanel(1.2, 0.24, 5, 1, '#9fd0ff', 0, 1.0, 0.69);
-  }
-
-  /* ================= 拉萨布达拉宫 ================= */
-  if (t === 'palace') {
-    // 山体
-    const hill = new THREE.Mesh(new THREE.CylinderGeometry(1.85, 2.5, 0.75, 7), MAT.stone);
-    hill.position.y = 0.38;
-    hill.scale.z = 0.75;
-    hill.receiveShadow = true;
-    g.add(hill);
-    // 白宫（两侧）
-    box(2.3, 0.9, 1.2, whiteWall, 0, 1.22, 0, g);
-    // 红宫（中间）
-    box(1.45, 0.86, 1.0, roofRed, 0, 2.1, 0, g);
-    // 金顶
-    hipRoof(1.75, 1.2, 0.16, gold, 2.6);
-    tips(1.75, 1.2, 2.58, gold, 0.75);
-    hipRoof(1.0, 0.8, 0.16, gold, 2.82);
-    // 窗（白宫 + 红宫）
-    winPanel(2.0, 0.5, 10, 2, '#3a2a22', 0, 1.22, 0.605);
-    winPanel(1.2, 0.5, 6, 2, '#2a1c18', 0, 2.1, 0.505);
-    // 层间线
-    box(2.34, 0.03, 1.23, MAT.stoneDark, 0, 1.62, 0, g);
-    // 台阶
-    for (let i = 0; i < 4; i++) box(0.7 - i * 0.06, 0.06, 0.1, marble, 0, 0.9 - i * 0.06, 0.72 + i * 0.05, g);
-  }
-
-  /* ================= 天津之眼 ================= */
-  if (t === 'ferris') {
-    // 桥面
-    box(4.0, 0.14, 1.25, MAT.stone, 0, 0.28, 0, g);
-    box(4.0, 0.05, 1.3, MAT.line, 0, 0.36, 0, g);
-    for (let i = -3; i <= 3; i++) box(0.18, 0.14, 1.3, MAT.stoneDark, i * 0.55, 0.2, 0, g);
-    // 轮
-    const wheel = new THREE.Group();
-    const R = 1.22;
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(R, 0.035, 6, 54), steel);
-    wheel.add(ring);
-    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(R * 0.86, 0.018, 6, 48), steel);
-    wheel.add(ring2);
-    for (let i = 0; i < 18; i++) {
-      const a = (i / 18) * Math.PI * 2;
-      const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, R, 4), steel);
-      spoke.position.set(Math.cos(a) * R / 2, Math.sin(a) * R / 2, 0);
-      spoke.rotation.z = a - Math.PI / 2;
-      wheel.add(spoke);
-      // 轿厢
-      const cab = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.1, 0.13), new THREE.MeshStandardMaterial({ color: 0xf2f6ff, emissive: 0xffd9a0, emissiveIntensity: 1.1, roughness: 0.4 }));
-      cab.position.set(Math.cos(a) * R, Math.sin(a) * R, 0);
-      wheel.add(cab);
-    }
-    wheel.position.set(0, 1.55, 0);
-    g.add(wheel);
-    g.userData.wheel = wheel;
-    // 支架
-    [-1, 1].forEach(sx => {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.035, 1.3, 6), MAT.stone);
-      leg.position.set(sx * 0.36, 0.93, 0);
-      leg.rotation.z = sx * 0.28;
-      g.add(leg);
-    });
-  }
-
-  /* ================= 兰州中山桥 ================= */
-  if (t === 'bridge') {
-    // 桥墩
-    [-1.5, 0, 1.5].forEach(x => box(0.3, 0.42, 0.7, MAT.stone, x, 0.21, 0, g));
-    // 桥面
-    box(4.2, 0.12, 0.95, MAT.stone, 0, 0.5, 0, g);
-    // 钢拱
-    const arch = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.05, 6, 26, Math.PI), steel);
-    arch.position.y = 0.56;
-    g.add(arch);
-    const arch2 = new THREE.Mesh(new THREE.TorusGeometry(1.35, 0.04, 6, 28, Math.PI), steel);
-    arch2.position.y = 0.56;
-    g.add(arch2);
-    // 桁架
-    for (let i = -6; i <= 6; i++) {
-      const x = i * 0.32;
-      const h = Math.sqrt(Math.max(0, 1.05 * 1.05 - x * x));
-      box(0.014, Math.max(0.06, h), 0.014, steel, x, 0.56 + Math.max(0.06, h) / 2, 0.42, g);
-      box(0.014, Math.max(0.06, h), 0.014, steel, x, 0.56 + Math.max(0.06, h) / 2, -0.42, g);
-    }
-    // 栏杆 + 灯
-    [-0.45, 0.45].forEach(z => {
-      box(4.2, 0.02, 0.02, steel, 0, 0.92, z, g);
-      for (let i = -3; i <= 3; i++) box(0.02, 0.3, 0.02, steel, i * 0.6, 0.77, z, g);
-    });
-    [-1.6, -0.55, 0.55, 1.6].forEach(x => {
-      const lampPost = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), MAT.warm);
-      lampPost.position.set(x, 1.0, 0.45);
-      g.add(lampPost);
-    });
-  }
-
-  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  return g;
-}
-
-const landmark = buildLandmark();
-landmark.position.set(0, 0.22, 0);
-landmark.scale.setScalar(1.32);
+const landmark = createLandmark({
+  city,
+  MAT,
+  PAL: { gold, roofRed, wallRed, whiteWall, woodDark, brick, greenDome }
+});
+landmark.position.set(0, 0.2, 0);
+landmark.scale.setScalar(LANDMARK_SCALE);
 pivot.add(landmark);
 
 /* ---------------- 天气特效 ---------------- */
