@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three.module.js';
 import { createLandmark } from './landmarks.js';
+import { createVoxelLandmark } from './voxel-landmarks.js';
 
 /* =========================================================
    天气视界 · 3D 城市场景
@@ -10,6 +11,8 @@ const cityId = params.get('city') || 'beijing';
 const city = window.cityById(cityId);
 const FORCE_WX = params.get('wx');
 const FORCE_HOUR = params.get('hour') ? parseFloat(params.get('hour')) : null;
+/* 模型体系：voxel（体素方块，默认）/ classic（低多边形写实） */
+const MODEL_SET = (params.get('models') || 'voxel').toLowerCase() === 'classic' ? 'classic' : 'voxel';
 const ACCENT = new THREE.Color(city.accent || '#7fe3ff');
 
 const canvas = document.getElementById('gl');
@@ -681,13 +684,18 @@ function windowsPlane(w, h, cols, rows, color) {
   return new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.55, roughness: 0.6 });
 }
 
-/* 地标建模已抽到 landmarks.js：18 城 / 11 种类型，含台基、檐口、柱廊、塔刹等层次 */
+/* 地标建模两套并存（对应 docs/landmarks.md）：
+   · voxel-landmarks.js  体素方块体系，按颜色合桶，几十个 draw call
+   · landmarks.js        低多边形写实体系，台基 / 檐口 / 柱廊 / 塔刹层层叠加
+   默认 voxel；?models=classic 可回退旧版对比 */
 
-const landmark = createLandmark({
-  city,
-  MAT,
-  PAL: { gold, roofRed, wallRed, whiteWall, woodDark, brick, greenDome }
-});
+const landmark = MODEL_SET === 'classic'
+  ? createLandmark({
+      city,
+      MAT,
+      PAL: { gold, roofRed, wallRed, whiteWall, woodDark, brick, greenDome }
+    })
+  : createVoxelLandmark({ city });
 landmark.position.set(0, 0.2, 0);
 landmark.scale.setScalar(LANDMARK_SCALE);
 pivot.add(landmark);
@@ -884,6 +892,15 @@ function applyWeather(w) {
   lamps.forEach(l => { l.userData.light.intensity = lampOn ? 6 : 0; });
   MAT.warm.emissiveIntensity = lampOn ? 2.6 : 0.6;
   base.userData.glow.opacity = rainy ? 0.12 : 0.05;
+
+  // 体素地标：入夜点亮窗带与玻璃幕墙（voxel-landmarks.js 暴露的材质列表）
+  if (landmark && landmark.userData.voxelLit) {
+    landmark.userData.voxelLit.forEach(function (m) {
+      m.emissiveIntensity = lampOn ? 1.05 : 0.12;
+    });
+    const vg = landmark.userData.voxelGlass;
+    if (vg) vg.material.emissiveIntensity = lampOn ? 0.95 : 0.34;
+  }
 
   W.mode = mode;
   W.thunder = mode === 'thunder';
@@ -1868,7 +1885,7 @@ function initFP() {
 
   // 地标内部材质同样加颗粒；米白石台基在阳光下会过曝成纯白，压成石材灰
   const seenMats = new Set();
-  landmark.traverse(function (o) {
+  if (MODEL_SET === 'classic') landmark.traverse(function (o) {
     if (!o.isMesh) return;
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     mats.forEach(function (m) {

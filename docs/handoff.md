@@ -122,7 +122,14 @@ weather3d/
 | 1258 | 摩天轮动画：`landmark.userData.wheel.rotation.z += dt * 0.12` |
 | 1782 / 1820 | 进入/退出第一人称时的地标缩放切换（0.98 / 1.32） |
 
-### 6.2 `landmarks.js`（1210 行）
+### 6.2 `voxel-landmarks.js`（默认）与 `landmarks.js`（备选）
+
+地标有两套体系，`scene.js` 按 `?models=` 二选一（默认 voxel）：
+`createVoxelLandmark({ city })` / `createLandmark({ city, MAT, PAL })`，都返回 `THREE.Group`。
+体素版靠「按颜色合桶 + mergeGeos」把一座地标的 draw call 压到 10–20，色板经 `TONE_MAP` 映射防过曝，
+夜景窗光挂在 `landmark.userData.voxelLit`。详见 `docs/landmarks.md` §十。
+
+### 6.3 `landmarks.js`（1210 行，备选）
 
 ```
 16  canvasTex     27  windowTex    45  brickTex      ← 程序化贴图

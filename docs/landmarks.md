@@ -2,6 +2,9 @@
 
 > 覆盖 18 座城市的地标 3D 模型。本文按「通用构件 → 材质 → 分派 → 逐城拆解 → 调参速查」组织。
 > 代码位置以 `landmarks.js` 行号为准（2026-11-12 版，共 1210 行）。
+>
+> **⚠️ 2026-11-12 起默认模型改为体素版**（`voxel-landmarks.js`），本文描述的低多边形写实版改为备选，
+> 通过 `scene.html?city=xx&models=classic` 启用。体素体系的差异见文末 [§十](#十体素模型体系voxel-landmarksjs)。
 
 ---
 
@@ -324,6 +327,69 @@
 | 文件 | 关系 |
 |---|---|
 | `public/js/cities.js` | 城市元数据，`type`/`id`/`accent` 决定走哪个 builder |
-| `public/js/scene.js:686` | 调用入口；`LANDMARK_SCALE`、`PAL` 定义；摩天轮动画在 `1258` |
+| `public/js/scene.js` | 调用入口（`createLandmark` / `createVoxelLandmark` 二选一）；`LANDMARK_SCALE`、`PAL` 定义；摩天轮动画 |
+| `public/js/voxel-landmarks.js` | **默认**体素地标体系，见 §十 |
 | `docs/architecture.md` | 三层页面与整体渲染管线 |
 | `docs/conventions.md` | 改完必须同步 `public/` → `dist/` 并提交 |
+
+---
+
+## 十、体素模型体系（`voxel-landmarks.js`）
+
+> 由「微缩街区」项目的方块建模体系移植而来，2026-11-12 起作为线上默认模型。
+
+### 10.1 与写实版的区别
+
+| 项目 | 写实版 `landmarks.js` | 体素版 `voxel-landmarks.js` |
+|---|---|---|
+| 建模单位 | 普通构件（`roof` / `colonnade` / `winPlane`…），尺寸 0–5 | 方块（`B` / `CY` / `SP` / `STRUT` / `FRUSTUM` / `ROOF`…），尺寸 0–40 |
+| 组织方式 | 每个构件单独 `Mesh` | 所有方块按**颜色合桶**，每色 `mergeGeos()` 成一个 `Mesh` |
+| draw call | 一座地标 100+ | 一座地标 10–20 |
+| 归一化 | 手调尺寸 | `TARGET_H = 5.9` / `TARGET_W = 4.8` 自动缩放到统一体量 |
+| 入口 | `createLandmark({ city, MAT, PAL })` | `createVoxelLandmark({ city })` |
+| 切换 | `?models=classic` | 默认 |
+
+### 10.2 三条硬规矩
+
+1. **几何不能直接加到场景**：一律走 `B/CY/SP/GLS/STRUT/FRUSTUM/PYR/ROOF/COLS/RAIL/ARCH/WATER`，
+   它们负责按色入桶；直接 `new THREE.Mesh` 会破坏合桶，draw call 立刻爆。
+2. **颜色必须来自色板**：`C`（街区色板）或 `X`（中式色板）。写裸 hex 也能跑，但不会进 `TONE_MAP`，
+   在强日照下容易过曝。
+3. **不要动 `root.scale`**：归一化在 `createVoxelLandmark()` 里已经烘进几何，
+   `scene.js` 之后会用地标的 `LANDMARK_SCALE` 覆盖 `root.scale`。
+
+### 10.3 色板映射 `TONE_MAP`（防过曝）
+
+站点是「强日照 + ACES 色调映射」，体素原色板里的纯白和浅石色会直接顶到白块。映射表：
+
+| 原色 | 站点色 | 用途 |
+|---|---|---|
+| `0xffffff` | `0xdcd3c0` | 白墙、白栏、石栏 |
+| `0xfbfcfe` | `0xe6dfd0` | 台面 |
+| `0xeff3f8` | `0xd8dfe8` | 场地铺装 |
+| `0xece8dd` | `0xc9bfa9` | 石台基 |
+| `0x74c2ec` / `0x4fa8dd` | `0x3d84b2` / `0x2e6b97` | 水面 |
+
+未列入映射的颜色统一乘 0.95 压一档。
+
+### 10.4 夜景窗光
+
+`matFor()` 会把玻璃色（`0xd7ecfb` / `0x93cbf5` / `0x9fd8f5`）的材质登记进 `litMats`，
+连同玻璃 `mesh` 一起挂到 `landmark.userData.voxelLit` / `voxelGlass`；
+`scene.js` 的 `applyWeather()` 在 `lampOn` 时把 `emissiveIntensity` 提到 1.05 / 0.95，白天压回 0.12 / 0.34。
+
+### 10.5 摩天轮
+
+天津之眼的轮盘（双圈 / 辐条 / 吊舱 / 轴心）在 `lmTianjin()` 里用 `wheelSpin = true` 切到独立桶，
+`createVoxelLandmark()` 再把它们绕轴心 `WHEEL_HUB` 收拢成子组挂到 `landmark.userData.wheel`，
+`scene.js` 里原有的 `wheel.rotation.z += dt * 0.12` 直接生效。
+
+### 10.6 改一座体素地标
+
+| 想改什么 | 改哪里 |
+|---|---|
+| 单城尺寸 | `TARGET_H` / `TARGET_W`（全局）；单城特例在 `BUILDERS` 里可选包一层 |
+| 单城配色 | 该 `lmXxx()` 里用的 `C.xxx` / `X.xxx` |
+| 水面占太多、模型显小 | 该城 `WATER(w, d, ...)` 与两岸 `B(...)` 的 `w` 一起收窄 |
+| 加一城 | `BUILDERS` 加 `id: lmXxx` 映射；无新形态直接复用现有 `lmXxx` |
+| 体量/位置微调 | 只动 `createVoxelLandmark()` 的归一化段，别改 `scene.js` |

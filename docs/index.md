@@ -26,6 +26,7 @@
 - 备用地址：https://renmai-planner.app.workbuddy.host/?sharecode=VWDFLQREDJ
 - 仓库性质：**公开**（2026-11-11 由私有转公开，用于解锁免费账号的 Pages）
 - 运行方式：`node server.js`，零依赖，Node 18+
+- 地标模型：**体素版**（`js/voxel-landmarks.js`）为默认；`scene.html?city=xx&models=classic` 可切回低多边形写实版对比
 
 ## 关键约束
 

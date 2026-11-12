@@ -10,7 +10,7 @@ index.html（封面） ──点击「进入城市选择」──▶ select.html
 |---|---|---|---|
 | 封面 | `public/index.html` + `css/cover.css` + `js/cover.js` | 极光背景、地面网格、雾气 canvas、镜面高光按钮（WebGL 着色器）、标题激光扫描 | cover.js ≈16KB |
 | 选城 | `public/select.html` + `css/select.css` + `js/select.js` | 柔性弯曲卡片轮播（着色器变形），18 张地标卡片 | select.js ≈20KB |
-| 场景 | `public/scene.html` + `css/scene.css` + `js/scene.js` | three.js 等距 3D 微缩模型 + 天气特效 + 右侧天气面板 | scene.js ≈96KB |
+| 场景 | `public/scene.html` + `css/scene.css` + `js/scene.js` | three.js 等距 3D 微缩模型 + 天气特效 + 右侧天气面板 | scene.js ≈97KB |
 
 ## 二、JS 模块职责
 
@@ -20,7 +20,9 @@ index.html（封面） ──点击「进入城市选择」──▶ select.html
 | `js/cardart.js` | 按 `type`（gate / tvTower / skyline / tower / pagoda / stilt / dome / palace / ferris / bridge / twin）程序化生成地标插画 | 无 |
 | `js/cover.js` | 封面交互：按钮着色器、激光、雾气、进入选城 | cities.js |
 | `js/select.js` | 卡片轮播、弯曲着色器、跳转场景 | cities.js、cardart.js |
-| `js/scene.js` | 3D 场景构建、天气特效、数据加载与面板渲染 | three.module.js、cities.js |
+| `js/scene.js` | 3D 场景构建、天气特效、数据加载与面板渲染 | three.module.js、cities.js、landmarks.js、voxel-landmarks.js |
+| `js/voxel-landmarks.js` | **默认**地标模型：18 城体素方块版，按颜色合桶后合并成少量 mesh | three.module.js |
+| `js/landmarks.js` | 备选地标模型：低多边形写实版（台基/檐口/柱廊/塔刹），`?models=classic` 启用 | three.module.js |
 | `js/audio.js` | 环境音（可选） | 无 |
 | `js/vendor/three.module.js` | three.js 本地副本，离线可用 | — |
 
