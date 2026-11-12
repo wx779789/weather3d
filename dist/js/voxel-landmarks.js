@@ -1121,7 +1121,7 @@ const BUILDERS = {
 
 /* 归一化尺寸：与 landmarks.js 的体量口径对齐，
    宽不出 CORE_RADIUS(2.35)、高不顶画幅 */
-const TARGET_H = 5.9;
+const TARGET_H = 5.3;
 const TARGET_W = 4.8;
 
 export function createVoxelLandmark(options) {

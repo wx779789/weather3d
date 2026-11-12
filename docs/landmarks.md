@@ -345,7 +345,7 @@
 | 建模单位 | 普通构件（`roof` / `colonnade` / `winPlane`…），尺寸 0–5 | 方块（`B` / `CY` / `SP` / `STRUT` / `FRUSTUM` / `ROOF`…），尺寸 0–40 |
 | 组织方式 | 每个构件单独 `Mesh` | 所有方块按**颜色合桶**，每色 `mergeGeos()` 成一个 `Mesh` |
 | draw call | 一座地标 100+ | 一座地标 10–20 |
-| 归一化 | 手调尺寸 | `TARGET_H = 5.9` / `TARGET_W = 4.8` 自动缩放到统一体量 |
+| 归一化 | 手调尺寸 | `TARGET_H = 5.3` / `TARGET_W = 4.8` 自动缩放到统一体量 |
 | 入口 | `createLandmark({ city, MAT, PAL })` | `createVoxelLandmark({ city })` |
 | 切换 | `?models=classic` | 默认 |
 
